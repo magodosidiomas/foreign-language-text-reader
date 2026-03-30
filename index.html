@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Leitor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #f5f0e8;
+    --text: #1a1814;
+    --muted: #8a8278;
+    --accent: #c8793a;
+    --border: #ddd8ce;
+    --hl-new:   #f5c842cc;
+    --hl-seen:  #a8d4a8cc;
+    --hl-known: #b0c8e8cc;
+    --sheet-bg: #1e1c1a;
+    --sheet-text: #f0ece4;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--text); font-family: 'Lora', Georgia, serif; min-height: 100dvh; }
+
+  .screen { display: none; flex-direction: column; min-height: 100dvh; }
+  .screen.active { display: flex; }
+
+  /* LIBRARY */
+  #lib-screen { padding: 48px 22px 32px; gap: 0; }
+  #lib-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+  #lib-header h1 { font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  #new-text-btn { background: var(--accent); color: white; border: none; border-radius: 8px; padding: 8px 14px; font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500; cursor: pointer; }
+  #text-list { display: flex; flex-direction: column; gap: 12px; flex: 1; }
+
+  .text-card { background: white; border-radius: 12px; padding: 16px 18px; border: 1.5px solid var(--border); cursor: pointer; position: relative; }
+  .text-card:active { opacity: 0.75; }
+  .card-title { font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 24px; }
+  .card-meta  { font-family: 'DM Sans', sans-serif; font-size: 12px; color: var(--muted); display: flex; gap: 10px; }
+  .card-delete { position: absolute; top: 14px; right: 14px; background: none; border: none; color: #ccc; font-size: 20px; cursor: pointer; padding: 2px 6px; line-height: 1; }
+  .card-delete:active { color: #e66; }
+
+  #empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--muted); font-family: 'DM Sans', sans-serif; font-size: 14px; text-align: center; opacity: 0.6; }
+
+  /* ADD */
+  #add-screen { padding: 48px 22px 32px; gap: 16px; }
+  #add-screen h2 { font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  #text-title-input { background: white; border: 1.5px solid var(--border); border-radius: 10px; padding: 14px 16px; font-family: 'DM Sans', sans-serif; font-size: 15px; color: var(--text); outline: none; }
+  #text-title-input:focus { border-color: var(--accent); }
+  #text-input { flex: 1; background: white; border: 1.5px solid var(--border); border-radius: 12px; padding: 18px; font-family: 'Lora', serif; font-size: 17px; line-height: 1.7; color: var(--text); resize: none; outline: none; min-height: 200px; }
+  #text-input:focus { border-color: var(--accent); }
+  .btn-row { display: flex; gap: 10px; }
+  .btn-secondary { flex: 1; background: none; border: 1.5px solid var(--border); border-radius: 12px; padding: 16px; font-family: 'DM Sans', sans-serif; font-size: 15px; color: var(--muted); cursor: pointer; }
+  .btn-primary { flex: 2; background: var(--accent); color: white; border: none; border-radius: 12px; padding: 16px; font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 500; cursor: pointer; }
+
+  /* READ */
+  #toolbar { position: sticky; top: 0; z-index: 10; background: var(--bg); border-bottom: 1px solid var(--border); padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; }
+  #back-to-lib { background: none; border: none; font-family: 'DM Sans', sans-serif; font-size: 13px; color: var(--muted); cursor: pointer; padding: 4px 0; }
+  #saved-count { font-family: 'DM Sans', sans-serif; font-size: 12px; color: var(--muted); background: #ede8df; border-radius: 20px; padding: 4px 10px; }
+  #text-body { padding: 28px 22px 140px; font-size: 19px; line-height: 1.9; letter-spacing: 0.01em; }
+
+  .word { display: inline; cursor: pointer; border-radius: 3px; transition: background 0.1s; padding: 1px 0; }
+  .word.hl-new   { background: var(--hl-new); }
+  .word.hl-seen  { background: var(--hl-seen); }
+  .word.hl-known { background: var(--hl-known); }
+  .word.active-tap { background: #e0d8cc !important; }
+  .word.has-note { border-bottom: 2px dotted var(--accent); }
+
+  /* SHEET */
+  #bottom-sheet { position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; background: var(--sheet-bg); border-radius: 20px 20px 0 0; padding: 0 0 36px; transform: translateY(100%); transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1); box-shadow: 0 -4px 32px #0005; }
+  #bottom-sheet.open { transform: translateY(0); }
+  .sheet-handle { width: 36px; height: 4px; background: #3a3835; border-radius: 2px; margin: 12px auto 0; }
+  #sheet-word { font-family: 'Lora', serif; font-size: 22px; font-weight: 500; color: var(--sheet-text); padding: 14px 22px 0; }
+
+  #note-row { padding: 12px 22px 0; }
+  #note-input { width: 100%; background: #2a2725; border: 1px solid #3a3835; border-radius: 10px; padding: 11px 14px; font-family: 'DM Sans', sans-serif; font-size: 14px; color: var(--sheet-text); outline: none; caret-color: var(--accent); }
+  #note-input::placeholder { color: #555; }
+  #note-input:focus { border-color: #555; }
+
+  #sheet-actions { display: flex; gap: 8px; padding: 12px 22px 0; }
+  .hl-btn { flex: 1; border: none; border-radius: 10px; padding: 13px 6px; font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .hl-btn .dot { width: 10px; height: 10px; border-radius: 3px; }
+  .btn-new   { background: #3a3530; color: #f5c842; }
+  .btn-seen  { background: #2a332a; color: #a8d4a8; }
+  .btn-known { background: #252d35; color: #b0c8e8; }
+  .btn-clear { background: #2e2b28; color: #777; flex: 0.6; font-size: 18px; }
+  .btn-new .dot   { background: #f5c842; }
+  .btn-seen .dot  { background: #a8d4a8; }
+  .btn-known .dot { background: #b0c8e8; }
+
+  #overlay { display: none; position: fixed; inset: 0; z-index: 99; }
+  #overlay.active { display: block; }
+</style>
+</head>
+<body>
+
+<div id="lib-screen" class="screen active">
+  <div id="lib-header">
+    <h1>Biblioteca</h1>
+    <button id="new-text-btn">+ Novo</button>
+  </div>
+  <div id="text-list"></div>
+</div>
+
+<div id="add-screen" class="screen">
+  <h2>Novo texto</h2>
+  <input id="text-title-input" type="text" placeholder="Título (opcional)">
+  <textarea id="text-input" placeholder="Cole o texto aqui..."></textarea>
+  <div class="btn-row">
+    <button class="btn-secondary" id="cancel-add-btn">Cancelar</button>
+    <button class="btn-primary" id="save-text-btn">Salvar →</button>
+  </div>
+</div>
+
+<div id="read-screen" class="screen">
+  <div id="toolbar">
+    <button id="back-to-lib">← Biblioteca</button>
+    <span id="saved-count">0 marcadas</span>
+  </div>
+  <div id="text-body"></div>
+</div>
+
+<div id="overlay"></div>
+<div id="bottom-sheet">
+  <div class="sheet-handle"></div>
+  <div id="sheet-word"></div>
+  <div id="note-row">
+    <input id="note-input" type="text" placeholder="Nota rápida...">
+  </div>
+  <div id="sheet-actions">
+    <button class="hl-btn btn-new"   data-hl="hl-new">  <div class="dot"></div>Nova</button>
+    <button class="hl-btn btn-seen"  data-hl="hl-seen"> <div class="dot"></div>Vista</button>
+    <button class="hl-btn btn-known" data-hl="hl-known"><div class="dot"></div>Sei</button>
+    <button class="hl-btn btn-clear" data-hl="">✕</button>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = 'leitor_v2';
+let library = [];
+let currentTextId = null;
+let activeWordEl = null;
+
+function loadLibrary() {
+  try { library = JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+  catch { library = []; }
+}
+
+function saveLibrary() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(library));
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+// ── LIBRARY ──
+function renderLibrary() {
+  const list = document.getElementById('text-list');
+  list.innerHTML = '';
+
+  if (library.length === 0) {
+    list.innerHTML = '<div id="empty-state"><div style="font-size:40px">📖</div><div>Nenhum texto ainda.<br>Toque em + Novo para começar.</div></div>';
+    return;
+  }
+
+  library.forEach(entry => {
+    const card = document.createElement('div');
+    card.className = 'text-card';
+    const wordCount = entry.text.trim().split(/\s+/).length;
+    const hlCount = Object.values(entry.highlights || {}).filter(h => h && h.cls).length;
+    const preview = entry.text.slice(0, 55).trim() + (entry.text.length > 55 ? '…' : '');
+
+    card.innerHTML = `
+      <div class="card-title">${entry.title || preview}</div>
+      <div class="card-meta">
+        <span>${wordCount} palavras</span>
+        ${hlCount > 0 ? `<span>${hlCount} marcadas</span>` : ''}
+      </div>
+      <button class="card-delete" data-id="${entry.id}">×</button>
+    `;
+
+    card.addEventListener('click', e => {
+      if (e.target.classList.contains('card-delete')) return;
+      openText(entry.id);
+    });
+
+    card.querySelector('.card-delete').addEventListener('click', e => {
+      e.stopPropagation();
+      if (confirm('Apagar este texto?')) {
+        library = library.filter(t => t.id !== entry.id);
+        saveLibrary();
+        renderLibrary();
+      }
+    });
+
+    list.appendChild(card);
+  });
+}
+
+document.getElementById('new-text-btn').addEventListener('click', () => {
+  document.getElementById('text-title-input').value = '';
+  document.getElementById('text-input').value = '';
+  showScreen('add-screen');
+});
+
+document.getElementById('cancel-add-btn').addEventListener('click', () => showScreen('lib-screen'));
+
+document.getElementById('save-text-btn').addEventListener('click', () => {
+  const text = document.getElementById('text-input').value.trim();
+  if (!text) return;
+  const title = document.getElementById('text-title-input').value.trim();
+  const entry = { id: Date.now().toString(), title, text, highlights: {} };
+  library.unshift(entry);
+  saveLibrary();
+  openText(entry.id);
+});
+
+// ── READ ──
+function openText(id) {
+  const entry = library.find(t => t.id === id);
+  if (!entry) return;
+  currentTextId = id;
+  buildText(entry.text, entry.highlights || {});
+  updateCount();
+  showScreen('read-screen');
+}
+
+function tokenize(text) {
+  return text.split(/(\s+|[.,!?;:"""''()\[\]—–\-])/);
+}
+
+function buildText(text, highlights) {
+  const body = document.getElementById('text-body');
+  body.innerHTML = '';
+  const tokens = tokenize(text);
+  let wordIdx = 0;
+
+  tokens.forEach(token => {
+    if (!token) return;
+
+    if (/^\s+$/.test(token)) {
+      const parts = token.split('\n');
+      parts.forEach((_, i) => {
+        if (i > 0) body.appendChild(document.createElement('br'));
+      });
+      if (!token.includes('\n')) body.appendChild(document.createTextNode(token));
+      return;
+    }
+
+    if (/^[.,!?;:"""''()\[\]—–\-]+$/.test(token)) {
+      body.appendChild(document.createTextNode(token));
+      return;
+    }
+
+    const span = document.createElement('span');
+    span.className = 'word';
+    span.textContent = token;
+    span.dataset.idx = wordIdx;
+
+    const saved = highlights[wordIdx];
+    if (saved) {
+      if (saved.cls) span.classList.add(saved.cls);
+      if (saved.note) span.classList.add('has-note');
+    }
+
+    span.addEventListener('click', e => { e.stopPropagation(); openSheet(span); });
+    body.appendChild(span);
+    wordIdx++;
+  });
+}
+
+// ── SHEET ──
+const sheet     = document.getElementById('bottom-sheet');
+const overlay   = document.getElementById('overlay');
+const sheetWord = document.getElementById('sheet-word');
+const noteInput = document.getElementById('note-input');
+
+function openSheet(span) {
+  if (activeWordEl) activeWordEl.classList.remove('active-tap');
+  activeWordEl = span;
+  span.classList.add('active-tap');
+  sheetWord.textContent = span.dataset.word;
+
+  const entry = library.find(t => t.id === currentTextId);
+  const saved = entry?.highlights[span.dataset.idx];
+  noteInput.value = saved?.note || '';
+
+  sheet.classList.add('open');
+  overlay.classList.add('active');
+}
+
+function persistNote() {
+  if (!activeWordEl) return;
+  const entry = library.find(t => t.id === currentTextId);
+  if (!entry) return;
+  const idx = activeWordEl.dataset.idx;
+  const existing = entry.highlights[idx] || {};
+  const note = noteInput.value.trim();
+
+  if (!existing.cls && !note) {
+    delete entry.highlights[idx];
+    activeWordEl.classList.remove('has-note');
+  } else {
+    entry.highlights[idx] = { cls: existing.cls || '', note };
+    activeWordEl.classList.toggle('has-note', !!note);
+  }
+  saveLibrary();
+}
+
+function closeSheet() {
+  persistNote();
+  if (activeWordEl) { activeWordEl.classList.remove('active-tap'); activeWordEl = null; }
+  sheet.classList.remove('open');
+  overlay.classList.remove('active');
+}
+
+document.querySelectorAll('.hl-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!activeWordEl) return;
+    const entry = library.find(t => t.id === currentTextId);
+    if (!entry) return;
+    const idx = activeWordEl.dataset.idx;
+    const hlClass = btn.dataset.hl;
+    const note = noteInput.value.trim();
+
+    activeWordEl.classList.remove('hl-new', 'hl-seen', 'hl-known');
+
+    if (!hlClass && !note) {
+      delete entry.highlights[idx];
+      activeWordEl.classList.remove('has-note');
+    } else {
+      entry.highlights[idx] = { cls: hlClass, note };
+      if (hlClass) activeWordEl.classList.add(hlClass);
+      activeWordEl.classList.toggle('has-note', !!note);
+    }
+
+    saveLibrary();
+    updateCount();
+
+    // close without re-persisting
+    if (activeWordEl) { activeWordEl.classList.remove('active-tap'); activeWordEl = null; }
+    sheet.classList.remove('open');
+    overlay.classList.remove('active');
+  });
+});
+
+overlay.addEventListener('click', closeSheet);
+
+function updateCount() {
+  const entry = library.find(t => t.id === currentTextId);
+  const n = Object.values(entry?.highlights || {}).filter(h => h && h.cls).length;
+  document.getElementById('saved-count').textContent = n === 0 ? '0 marcadas' : `${n} marcada${n !== 1 ? 's' : ''}`;
+}
+
+document.getElementById('back-to-lib').addEventListener('click', () => {
+  closeSheet();
+  renderLibrary();
+  showScreen('lib-screen');
+});
+
+// ── INIT ──
+loadLibrary();
+renderLibrary();
+</script>
+</body>
+</html>
