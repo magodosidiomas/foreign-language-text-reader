@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* ── Reset & Tokens ─────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #111213;
+    --surface:   #18191b;
+    --surface2:  #202224;
+    --surface3:  #2a2d30;
+    --border:    #2e3135;
+    --border2:   #3a3e44;
+    --text:      #e2e4e7;
+    --text-2:    #9aa0aa;
+    --text-3:    #5e6470;
+    --accent:    #5b8dee;
+    --accent-bg: rgba(91,141,238,.12);
+    --yellow:    #f5c842;
+    --yellow-bg: rgba(245,200,66,.15);
+    --green:     #4caf82;
+    --green-bg:  rgba(76,175,130,.15);
+    --red:       #e05b5b;
+    --red-bg:    rgba(224,91,91,.13);
+    --radius:    8px;
+    --radius-lg: 14px;
+    --font-ui:   'DM Sans', sans-serif;
+    --font-read: 'Lora', Georgia, serif;
+    --transition: 140ms ease;
+  }
+
+  html, body { height: 100%; font-family: var(--font-ui); background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.5; }
+
+  /* ── Layout ──────────────────────────────────────────────────────── */
+  #app { display: flex; height: 100vh; overflow: hidden; }
+
+  /* Sidebar */
+  #sidebar {
+    width: 260px; min-width: 260px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    transition: transform var(--transition);
+  }
+
+  .sidebar-header {
+    padding: 16px 16px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+
+  .app-logo {
+    font-size: 13px; font-weight: 500; letter-spacing: .04em;
+    color: var(--text-2); text-transform: uppercase;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .app-logo span { color: var(--accent); }
+
+  /* Language selector */
+  #lang-btn {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 7px 10px;
+    cursor: pointer; font: inherit; font-size: 13px; color: var(--text);
+    width: 100%; text-align: left; transition: border-color var(--transition);
+  }
+  #lang-btn:hover { border-color: var(--border2); }
+  #lang-btn .flag { font-size: 16px; }
+  #lang-btn .chevron { margin-left: auto; color: var(--text-3); font-size: 11px; }
+
+  /* Text list */
+  .sidebar-texts { flex: 1; overflow-y: auto; padding: 8px 0; }
+  .sidebar-texts::-webkit-scrollbar { width: 4px; }
+  .sidebar-texts::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .text-item {
+    display: flex; align-items: center;
+    padding: 7px 14px; cursor: pointer;
+    border-radius: 0; gap: 10px; position: relative;
+    transition: background var(--transition);
+    border-left: 2px solid transparent;
+  }
+  .text-item:hover { background: var(--surface2); }
+  .text-item.active { background: var(--surface2); border-left-color: var(--accent); }
+  .text-item .item-title {
+    flex: 1; font-size: 13px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; color: var(--text);
+  }
+  .text-item.active .item-title { color: var(--accent); }
+  .text-item .item-lang { font-size: 11px; color: var(--text-3); }
+  .text-item-actions {
+    display: none; gap: 2px;
+  }
+  .text-item:hover .text-item-actions { display: flex; }
+  .icon-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-3); padding: 3px 5px; border-radius: 4px;
+    font-size: 12px; line-height: 1; transition: color var(--transition), background var(--transition);
+  }
+  .icon-btn:hover { color: var(--text); background: var(--surface3); }
+  .icon-btn.danger:hover { color: var(--red); }
+
+  .sidebar-footer {
+    padding: 12px 14px; border-top: 1px solid var(--border);
+  }
+
+  /* ── Main ─────────────────────────────────────────────────────────── */
+  #main {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  /* Top bar */
+  #topbar {
+    height: 48px; display: flex; align-items: center;
+    padding: 0 20px; gap: 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  #topbar .title-display {
+    flex: 1; font-size: 14px; font-weight: 500; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #topbar .title-display.empty { color: var(--text-3); font-weight: 400; }
+
+  /* Progress bar */
+  #progress-bar-wrap {
+    height: 2px; background: var(--surface3); flex-shrink: 0;
+  }
+  #progress-bar { height: 100%; background: var(--accent); width: 0%; transition: width .3s; }
+
+  /* Reader area */
+  #reader-area {
+    flex: 1; overflow-y: auto; padding: 48px 24px;
+    scroll-behavior: smooth;
+  }
+  #reader-area::-webkit-scrollbar { width: 6px; }
+  #reader-area::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  #text-content {
+    max-width: 660px; margin: 0 auto;
+    font-family: var(--font-read); font-size: 19px; line-height: 1.85;
+    color: var(--text);
+    user-select: text;
+  }
+
+  /* Word tokens */
+  .word {
+    cursor: pointer; border-radius: 3px;
+    padding: 0 1px; display: inline;
+    transition: background var(--transition);
+    position: relative;
+  }
+  .word:hover { background: var(--surface3); }
+  .word.highlighted { background: var(--yellow-bg); }
+  .word.selected { background: var(--accent-bg); outline: 1px solid var(--accent); outline-offset: 1px; }
+
+  /* Furigana / reader mode */
+  .word-wrap {
+    display: inline-block; text-align: center;
+    position: relative; vertical-align: bottom;
+  }
+  .word-ruby {
+    display: block;
+    font-family: var(--font-ui); font-size: 10px; line-height: 1.2;
+    color: var(--accent); font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    max-width: 120px;
+    margin-bottom: 1px;
+  }
+
+  /* Empty state */
+  #empty-state {
+    max-width: 380px; margin: 80px auto;
+    text-align: center; display: none;
+  }
+  #empty-state .empty-icon { font-size: 40px; margin-bottom: 16px; }
+  #empty-state h2 { font-size: 16px; font-weight: 500; margin-bottom: 8px; }
+  #empty-state p { font-size: 13px; color: var(--text-3); line-height: 1.6; }
+
+  /* ── Buttons & controls ──────────────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    border: none; border-radius: var(--radius); cursor: pointer;
+    font: inherit; font-size: 13px; font-weight: 500;
+    padding: 7px 14px; transition: opacity var(--transition), background var(--transition);
+    white-space: nowrap;
+  }
+  .btn:active { opacity: .8; }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #4a7de0; }
+  .btn-ghost {
+    background: none; border: 1px solid var(--border2);
+    color: var(--text-2);
+  }
+  .btn-ghost:hover { background: var(--surface3); color: var(--text); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+  /* Toggle */
+  .toggle-row {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--text-2); white-space: nowrap;
+  }
+  .toggle {
+    width: 30px; height: 17px;
+    background: var(--surface3); border-radius: 99px;
+    cursor: pointer; position: relative;
+    transition: background var(--transition); flex-shrink: 0;
+    border: none;
+  }
+  .toggle::after {
+    content: ''; position: absolute;
+    width: 13px; height: 13px; border-radius: 50%;
+    background: var(--text-3); top: 2px; left: 2px;
+    transition: transform var(--transition), background var(--transition);
+  }
+  .toggle.on { background: var(--accent-bg); border: 1px solid var(--accent); }
+  .toggle.on::after { transform: translateX(13px); background: var(--accent); }
+
+  /* ── Overlay / Modal ─────────────────────────────────────────────── */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100; opacity: 0; pointer-events: none;
+    transition: opacity var(--transition);
+  }
+  .overlay.open { opacity: 1; pointer-events: all; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-lg);
+    width: min(440px, calc(100vw - 32px));
+    padding: 24px;
+    transform: translateY(8px) scale(.98);
+    transition: transform var(--transition);
+    max-height: calc(100vh - 64px);
+    display: flex; flex-direction: column;
+  }
+  .overlay.open .modal { transform: none; }
+
+  .modal-title {
+    font-size: 15px; font-weight: 600; margin-bottom: 16px;
+  }
+  .modal-footer {
+    display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;
+  }
+
+  /* ── Form elements ───────────────────────────────────────────────── */
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .field label { font-size: 12px; color: var(--text-2); font-weight: 500; }
+  .input, .textarea {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text);
+    font: inherit; padding: 8px 12px;
+    outline: none; transition: border-color var(--transition);
+    width: 100%;
+  }
+  .input:focus, .textarea:focus { border-color: var(--accent); }
+  .input::placeholder, .textarea::placeholder { color: var(--text-3); }
+  .textarea { resize: vertical; min-height: 180px; font-size: 14px; line-height: 1.6; }
+
+  .input-row { display: flex; gap: 8px; }
+  .input-row .input { flex: 1; }
+
+  /* ── Language picker ─────────────────────────────────────────────── */
+  #lang-modal .lang-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 4px; overflow-y: auto; max-height: 360px;
+    padding-right: 4px;
+  }
+  #lang-modal .lang-grid::-webkit-scrollbar { width: 4px; }
+  #lang-modal .lang-grid::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .lang-option {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: var(--radius);
+    cursor: pointer; font-size: 13px;
+    transition: background var(--transition);
+    border: 1px solid transparent;
+  }
+  .lang-option:hover { background: var(--surface2); }
+  .lang-option.selected { background: var(--accent-bg); border-color: rgba(91,141,238,.3); }
+  .lang-option .flag { font-size: 18px; }
+
+  /* ── Word popover ─────────────────────────────────────────────────── */
+  #word-popover {
+    position: fixed; z-index: 200;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    width: 240px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4);
+    display: none;
+    flex-direction: column; gap: 10px;
+  }
+  #word-popover.open { display: flex; }
+
+  .pop-word {
+    font-family: var(--font-read); font-size: 17px;
+    font-weight: 500; color: var(--text);
+  }
+  .pop-meaning-row {
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  .pop-meaning {
+    flex: 1; font-size: 13px; color: var(--text-2);
+    line-height: 1.5;
+  }
+  .pop-meaning.empty { color: var(--text-3); font-style: italic; }
+  .pop-remove {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-3); font-size: 14px; line-height: 1;
+    padding: 2px 3px; border-radius: 4px; flex-shrink: 0;
+    transition: color var(--transition);
+    display: none;
+  }
+  .pop-remove:hover { color: var(--red); }
+  .pop-remove.visible { display: block; }
+
+  .pop-input {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text);
+    font: inherit; font-size: 13px; padding: 7px 10px;
+    outline: none; width: 100%;
+    transition: border-color var(--transition);
+  }
+  .pop-input:focus { border-color: var(--accent); }
+  .pop-input::placeholder { color: var(--text-3); }
+
+  .pop-actions { display: flex; gap: 6px; align-items: center; }
+  .pop-hint { font-size: 11px; color: var(--text-3); margin-left: auto; }
+
+  /* ── Sentence View (integral mode) ──────────────────────────────── */
+  .sentence-view {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: calc(100vh - 100px);
+    gap: 32px; text-align: center; padding: 40px 16px;
+  }
+  .sentence-counter {
+    font-family: var(--font-ui); font-size: 12px;
+    color: var(--text-3); letter-spacing: .06em; font-weight: 500;
+  }
+  .sentence-text {
+    font-family: var(--font-read); font-size: 24px; line-height: 1.8;
+    color: var(--text); max-width: 600px;
+  }
+  .sentence-nav { display: flex; gap: 10px; }
+  .sentence-nav .btn[disabled] { opacity: .3; cursor: default; pointer-events: none; }
+
+  /* ── Mobile tweaks ───────────────────────────────────────────────── */
+  #menu-toggle {
+    display: none; background: none; border: none;
+    color: var(--text); font-size: 18px; cursor: pointer; padding: 4px;
+  }
+
+  @media (max-width: 700px) {
+    #sidebar {
+      position: fixed; inset: 0 auto 0 0; z-index: 90;
+      transform: translateX(-100%);
+      width: 280px;
+    }
+    #sidebar.open { transform: none; box-shadow: 4px 0 20px rgba(0,0,0,.5); }
+    #menu-toggle { display: flex; }
+    #text-content { font-size: 17px; }
+    .sentence-text { font-size: 19px; }
+    .modal { padding: 20px; }
+  }
+
+  /* ── Misc ─────────────────────────────────────────────────────────── */
+  .divider { height: 1px; background: var(--border); margin: 4px 0; }
+  kbd {
+    background: var(--surface3); border: 1px solid var(--border2);
+    border-radius: 4px; padding: 1px 5px; font-size: 11px;
+    font-family: var(--font-ui); color: var(--text-2);
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <div class="app-logo">Reader <span>·</span></div>
+      <button id="lang-btn" onclick="openLangModal()">
+        <span class="flag" id="lang-flag">🌐</span>
+        <span id="lang-name">Selecionar idioma</span>
+        <span class="chevron">▾</span>
+      </button>
+    </div>
+
+    <div class="sidebar-texts" id="text-list">
+      <!-- populated by JS -->
+    </div>
+
+    <div class="sidebar-footer">
+      <button class="btn btn-ghost" style="width:100%;" onclick="openAddModal()">
+        + Adicionar texto
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── Main ──────────────────────────────────────────────────────── -->
+  <div id="main">
+    <div id="topbar">
+      <button id="menu-toggle" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+      <span class="title-display empty" id="topbar-title">Nenhum texto selecionado</span>
+
+      <!-- Controls -->
+      <div class="toggle-row" id="reader-mode-toggle" style="display:none;">
+        <button class="toggle" id="toggle-reader" onclick="toggleReaderMode()" title="Modo leitura (furigana)"></button>
+        <span>Significados</span>
+      </div>
+      <div style="width:1px; height:20px; background:var(--border); margin:0 4px;" id="divider1" style="display:none;"></div>
+      <div class="toggle-row" id="sentence-mode-toggle" style="display:none;">
+        <button class="toggle" id="toggle-sentence" onclick="toggleSentenceMode()" title="Modo frase"></button>
+        <span>Frase a frase</span>
+      </div>
+    </div>
+
+    <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+
+    <div id="reader-area" onscroll="updateProgress()">
+      <div id="text-content"></div>
+      <div id="empty-state">
+        <div class="empty-icon">📖</div>
+        <h2>Nenhum texto aberto</h2>
+        <p>Selecione um idioma e adicione um texto pela barra lateral para começar a ler.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Word Popover ──────────────────────────────────────────────── -->
+<div id="word-popover">
+  <div class="pop-word" id="pop-word-text"></div>
+  <div class="pop-meaning-row">
+    <div class="pop-meaning" id="pop-meaning-display"></div>
+    <button class="pop-remove" id="pop-remove" onclick="clearMeaning()" title="Remover significado">×</button>
+  </div>
+  <input class="pop-input" id="pop-input" placeholder="Adicionar significado…" autocomplete="off" />
+  <div class="pop-actions">
+    <span class="pop-hint"><kbd>Enter</kbd> pra salvar</span>
+  </div>
+</div>
+
+<!-- ── Language Modal ────────────────────────────────────────────── -->
+<div class="overlay" id="lang-overlay" onclick="closeLangModal(event)">
+  <div class="modal" id="lang-modal" onclick="event.stopPropagation()">
+    <div class="modal-title">Idioma de estudo</div>
+    <div class="lang-grid" id="lang-grid"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeLangModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Add / Edit Text Modal ────────────────────────────────────── -->
+<div class="overlay" id="text-overlay" onclick="closeTextModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title" id="text-modal-title">Adicionar texto</div>
+
+    <div class="field">
+      <label>Título</label>
+      <input class="input" id="text-title-input" placeholder="Ex: Artigo sobre tecnologia" />
+    </div>
+
+    <div class="field">
+      <label>Texto</label>
+      <div class="input-row">
+        <textarea class="textarea" id="text-body-input" placeholder="Cole ou escreva o texto aqui…"></textarea>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="pasteFromClipboard()" style="align-self:flex-start; margin-top:4px;">
+        📋 Colar da área de transferência
+      </button>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeTextModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveText()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Delete Confirm Modal ─────────────────────────────────────── -->
+<div class="overlay" id="del-overlay" onclick="closeDelModal(event)">
+  <div class="modal" onclick="event.stopPropagation()" style="max-width:360px;">
+    <div class="modal-title">Deletar texto?</div>
+    <p style="font-size:13px; color:var(--text-2);">Esta ação não pode ser desfeita. O texto e todos os significados salvos serão removidos.</p>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeDelModal()">Cancelar</button>
+      <button class="btn btn-primary" style="background:var(--red);" onclick="confirmDelete()">Deletar</button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────
+const LANGUAGES = [
+  { code:'en', name:'Inglês',        flag:'🇺🇸' },
+  { code:'es', name:'Espanhol',      flag:'🇪🇸' },
+  { code:'fr', name:'Francês',       flag:'🇫🇷' },
+  { code:'de', name:'Alemão',        flag:'🇩🇪' },
+  { code:'it', name:'Italiano',      flag:'🇮🇹' },
+  { code:'pt', name:'Português',     flag:'🇵🇹' },
+  { code:'ja', name:'Japonês',       flag:'🇯🇵' },
+  { code:'ko', name:'Coreano',       flag:'🇰🇷' },
+  { code:'zh', name:'Chinês',        flag:'🇨🇳' },
+  { code:'ru', name:'Russo',         flag:'🇷🇺' },
+  { code:'ar', name:'Árabe',         flag:'🇸🇦' },
+  { code:'hi', name:'Hindi',         flag:'🇮🇳' },
+  { code:'nl', name:'Holandês',      flag:'🇳🇱' },
+  { code:'pl', name:'Polonês',       flag:'🇵🇱' },
+  { code:'sv', name:'Sueco',         flag:'🇸🇪' },
+  { code:'no', name:'Norueguês',     flag:'🇳🇴' },
+  { code:'da', name:'Dinamarquês',   flag:'🇩🇰' },
+  { code:'fi', name:'Finlandês',     flag:'🇫🇮' },
+  { code:'tr', name:'Turco',         flag:'🇹🇷' },
+  { code:'cs', name:'Tcheco',        flag:'🇨🇿' },
+  { code:'ro', name:'Romeno',        flag:'🇷🇴' },
+  { code:'hu', name:'Húngaro',       flag:'🇭🇺' },
+  { code:'uk', name:'Ucraniano',     flag:'🇺🇦' },
+  { code:'el', name:'Grego',         flag:'🇬🇷' },
+  { code:'he', name:'Hebraico',      flag:'🇮🇱' },
+];
+
+let state = {
+  currentLang: null,   // language code
+  currentTextId: null, // active text id
+  texts: {},           // { [id]: { id, lang, title, body, meanings:{word:str}, createdAt } }
+  readerMode: false,
+  sentenceMode: false,
+  currentSentence: 0,
+  sentences: [],
+};
+
+// ── Persistence ─────────────────────────────────────────────────────
+function save() {
+  localStorage.setItem('reader_state', JSON.stringify({
+    currentLang: state.currentLang,
+    currentTextId: state.currentTextId,
+    texts: state.texts,
+  }));
+}
+
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem('reader_state') || '{}');
+    if (s.texts) state.texts = s.texts;
+    if (s.currentLang) state.currentLang = s.currentLang;
+    if (s.currentTextId && state.texts[s.currentTextId]) state.currentTextId = s.currentTextId;
+  } catch(e) {}
+}
+
+// ── Init ─────────────────────────────────────────────────────────────
+function init() {
+  load();
+  renderLangGrid();
+  renderSidebar();
+  updateLangBtn();
+  if (state.currentTextId) openText(state.currentTextId);
+  else showEmpty(true);
+}
+
+// ── Language ─────────────────────────────────────────────────────────
+function openLangModal() {
+  document.getElementById('lang-overlay').classList.add('open');
+  renderLangGrid();
+}
+function closeLangModal(e) {
+  if (e && e.target !== document.getElementById('lang-overlay')) return;
+  document.getElementById('lang-overlay').classList.remove('open');
+}
+
+function renderLangGrid() {
+  const grid = document.getElementById('lang-grid');
+  grid.innerHTML = LANGUAGES.map(l => `
+    <div class="lang-option ${state.currentLang === l.code ? 'selected' : ''}"
+         onclick="selectLang('${l.code}')">
+      <span class="flag">${l.flag}</span>
+      <span>${l.name}</span>
+    </div>
+  `).join('');
+}
+
+function selectLang(code) {
+  state.currentLang = code;
+  save();
+  updateLangBtn();
+  renderLangGrid();
+  renderSidebar();
+  // Open first text of this language if any
+  const texts = getTextsForLang(code);
+  if (texts.length) openText(texts[0].id);
+  else { state.currentTextId = null; showEmpty(true); }
+  closeLangModal();
+}
+
+function updateLangBtn() {
+  const lang = LANGUAGES.find(l => l.code === state.currentLang);
+  document.getElementById('lang-flag').textContent = lang ? lang.flag : '🌐';
+  document.getElementById('lang-name').textContent = lang ? lang.name : 'Selecionar idioma';
+}
+
+function getTextsForLang(code) {
+  return Object.values(state.texts)
+    .filter(t => t.lang === code)
+    .sort((a,b) => b.createdAt - a.createdAt);
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────
+function renderSidebar() {
+  const list = document.getElementById('text-list');
+  if (!state.currentLang) {
+    list.innerHTML = '<div style="padding:16px 14px; font-size:13px; color:var(--text-3);">Selecione um idioma primeiro.</div>';
+    return;
+  }
+  const texts = getTextsForLang(state.currentLang);
+  if (!texts.length) {
+    list.innerHTML = '<div style="padding:16px 14px; font-size:13px; color:var(--text-3);">Nenhum texto ainda. Adicione um abaixo.</div>';
+    return;
+  }
+  list.innerHTML = texts.map(t => `
+    <div class="text-item ${state.currentTextId === t.id ? 'active' : ''}"
+         onclick="openText('${t.id}')">
+      <span class="item-title">${escHtml(t.title)}</span>
+      <div class="text-item-actions" onclick="event.stopPropagation()">
+        <button class="icon-btn" onclick="openEditModal('${t.id}')" title="Editar">✎</button>
+        <button class="icon-btn danger" onclick="openDelModal('${t.id}')" title="Deletar">✕</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── Add / Edit Text Modal ─────────────────────────────────────────────
+let editingTextId = null;
+
+function openAddModal() {
+  if (!state.currentLang) { openLangModal(); return; }
+  editingTextId = null;
+  document.getElementById('text-modal-title').textContent = 'Adicionar texto';
+  document.getElementById('text-title-input').value = '';
+  document.getElementById('text-body-input').value = '';
+  document.getElementById('text-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('text-title-input').focus(), 80);
+}
+
+function openEditModal(id) {
+  editingTextId = id;
+  const t = state.texts[id];
+  document.getElementById('text-modal-title').textContent = 'Editar texto';
+  document.getElementById('text-title-input').value = t.title;
+  document.getElementById('text-body-input').value = t.body;
+  document.getElementById('text-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('text-title-input').focus(), 80);
+}
+
+function closeTextModal(e) {
+  if (e && e.target !== document.getElementById('text-overlay')) return;
+  document.getElementById('text-overlay').classList.remove('open');
+}
+
+function saveText() {
+  const title = document.getElementById('text-title-input').value.trim();
+  const body  = document.getElementById('text-body-input').value.trim();
+  if (!title || !body) return;
+
+  if (editingTextId) {
+    state.texts[editingTextId].title = title;
+    state.texts[editingTextId].body  = body;
+  } else {
+    const id = 'txt_' + Date.now();
+    state.texts[id] = { id, lang: state.currentLang, title, body, meanings: {}, createdAt: Date.now() };
+    state.currentTextId = id;
+  }
+  save();
+  renderSidebar();
+  if (editingTextId) {
+    openText(editingTextId);
+  } else {
+    openText(state.currentTextId);
+  }
+  document.getElementById('text-overlay').classList.remove('open');
+}
+
+async function pasteFromClipboard() {
+  try {
+    const text = await navigator.clipboard.readText();
+    document.getElementById('text-body-input').value = text;
+    document.getElementById('text-body-input').focus();
+  } catch(e) {
+    alert('Permissão de área de transferência negada. Cole manualmente com Ctrl+V.');
+  }
+}
+
+// ── Delete ────────────────────────────────────────────────────────────
+let deletingId = null;
+
+function openDelModal(id) {
+  deletingId = id;
+  document.getElementById('del-overlay').classList.add('open');
+}
+function closeDelModal(e) {
+  if (e && e.target !== document.getElementById('del-overlay')) return;
+  document.getElementById('del-overlay').classList.remove('open');
+}
+function confirmDelete() {
+  if (!deletingId) return;
+  delete state.texts[deletingId];
+  if (state.currentTextId === deletingId) {
+    state.currentTextId = null;
+    showEmpty(true);
+    setTopbarTitle(null);
+    hideControls();
+  }
+  deletingId = null;
+  save();
+  renderSidebar();
+  document.getElementById('del-overlay').classList.remove('open');
+}
+
+// ── Reader ────────────────────────────────────────────────────────────
+function openText(id) {
+  if (!state.texts[id]) return;
+  state.currentTextId = id;
+  save();
+  renderSidebar();
+  renderText(id);
+  showEmpty(false);
+  setTopbarTitle(state.texts[id].title);
+  showControls();
+  updateProgress();
+}
+
+function setTopbarTitle(t) {
+  const el = document.getElementById('topbar-title');
+  if (t) { el.textContent = t; el.classList.remove('empty'); }
+  else    { el.textContent = 'Nenhum texto selecionado'; el.classList.add('empty'); }
+}
+
+function showEmpty(yes) {
+  document.getElementById('empty-state').style.display = yes ? 'block' : 'none';
+  document.getElementById('text-content').style.display = yes ? 'none' : '';
+}
+
+function showControls() {
+  document.getElementById('reader-mode-toggle').style.display = 'flex';
+  document.getElementById('sentence-mode-toggle').style.display = 'flex';
+  document.getElementById('divider1').style.display = 'block';
+}
+function hideControls() {
+  document.getElementById('reader-mode-toggle').style.display = 'none';
+  document.getElementById('sentence-mode-toggle').style.display = 'none';
+  document.getElementById('divider1').style.display = 'none';
+}
+
+// Tokenize body into word tokens, preserving whitespace/punctuation
+function tokenizeBody(body) {
+  // Split on word boundaries but keep delimiters
+  return body.split(/(\s+|[。、！？,.!?;:""''()\[\]{}<>\/\\—–\-\n])/);
+}
+
+function isWord(token) {
+  return token && /\S/.test(token) && /[^\s。、！？,.!?;:""''()\[\]{}<>\/\\—–\-]/.test(token);
+}
+
+function renderText(id) {
+  const t = state.texts[id];
+  const container = document.getElementById('text-content');
+  const tokens = tokenizeBody(t.body);
+  state.sentences = splitSentences(t.body);
+  state.currentSentence = 0;
+
+  container.innerHTML = tokens.map((token, i) => {
+    if (!token) return '';
+    if (!isWord(token)) {
+      // preserve newlines
+      if (token.includes('\n')) return token.split('\n').map(() => '').join('<br>');
+      return escHtml(token);
+    }
+    const key = token.toLowerCase();
+    const meaning = t.meanings[key];
+    const highlighted = meaning ? 'highlighted' : '';
+    return `<span class="word ${highlighted}" data-word="${escAttr(token)}" data-key="${escAttr(key)}" onclick="wordClick(this, event)">${escHtml(token)}</span>`;
+  }).join('');
+
+  applyReaderMode();
+}
+
+function splitSentences(body) {
+  // Split on sentence-ending punctuation
+  const raw = body.split(/(?<=[.!?。！？])\s+/);
+  return raw.filter(s => s.trim().length > 0);
+}
+
+// ── Word click & popover ──────────────────────────────────────────────
+let activeWordEl = null;
+
+function wordClick(el, event) {
+  event.stopPropagation();
+  if (activeWordEl === el) { closePopover(); return; }
+  if (activeWordEl) activeWordEl.classList.remove('selected');
+  activeWordEl = el;
+  el.classList.add('selected');
+  showPopover(el);
+}
+
+function showPopover(el) {
+  const t = state.texts[state.currentTextId];
+  const word = el.dataset.word;
+  const key  = el.dataset.key;
+  const meaning = t.meanings[key] || '';
+  const pop = document.getElementById('word-popover');
+
+  document.getElementById('pop-word-text').textContent = word;
+  const disp = document.getElementById('pop-meaning-display');
+  const removeBtn = document.getElementById('pop-remove');
+  if (meaning) {
+    disp.textContent = meaning;
+    disp.classList.remove('empty');
+    removeBtn.classList.add('visible');
+  } else {
+    disp.textContent = 'Sem significado';
+    disp.classList.add('empty');
+    removeBtn.classList.remove('visible');
+  }
+
+  const input = document.getElementById('pop-input');
+  input.value = meaning;
+  input.placeholder = meaning ? 'Editar significado…' : 'Adicionar significado…';
+
+  pop.classList.add('open');
+  positionPopover(el);
+  setTimeout(() => input.focus(), 60);
+}
+
+function positionPopover(el) {
+  const pop = document.getElementById('word-popover');
+  const rect = el.getBoundingClientRect();
+  const pw = 240, ph = 160;
+  const vw = window.innerWidth, vh = window.innerHeight;
+
+  let top  = rect.bottom + 8;
+  let left = rect.left;
+
+  if (left + pw > vw - 12) left = vw - pw - 12;
+  if (left < 12) left = 12;
+  if (top + ph > vh - 12) top = rect.top - ph - 8;
+
+  pop.style.top  = top  + 'px';
+  pop.style.left = left + 'px';
+}
+
+function closePopover() {
+  document.getElementById('word-popover').classList.remove('open');
+  if (activeWordEl) { activeWordEl.classList.remove('selected'); activeWordEl = null; }
+}
+
+document.addEventListener('click', (e) => {
+  if (!document.getElementById('word-popover').contains(e.target)) closePopover();
+});
+
+// Save meaning on Enter
+document.getElementById('pop-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); saveMeaning(); }
+});
+
+function saveMeaning() {
+  if (!activeWordEl || !state.currentTextId) return;
+  const key = activeWordEl.dataset.key;
+  const val = document.getElementById('pop-input').value.trim();
+  const t = state.texts[state.currentTextId];
+
+  if (val) {
+    t.meanings[key] = val;
+    // Highlight all matching words
+    document.querySelectorAll(`.word[data-key="${CSS.escape(key)}"]`).forEach(w => {
+      w.classList.add('highlighted');
+    });
+  } else {
+    delete t.meanings[key];
+    document.querySelectorAll(`.word[data-key="${CSS.escape(key)}"]`).forEach(w => {
+      w.classList.remove('highlighted');
+    });
+  }
+  save();
+  applyReaderMode(); // refresh furigana if on
+  closePopover();
+}
+
+function clearMeaning() {
+  if (!activeWordEl || !state.currentTextId) return;
+  const key = activeWordEl.dataset.key;
+  const t = state.texts[state.currentTextId];
+  delete t.meanings[key];
+  document.querySelectorAll(`.word[data-key="${CSS.escape(key)}"]`).forEach(w => {
+    w.classList.remove('highlighted');
+  });
+  save();
+  applyReaderMode();
+  closePopover();
+}
+
+// ── Reader Mode (furigana) ────────────────────────────────────────────
+function toggleReaderMode() {
+  state.readerMode = !state.readerMode;
+  document.getElementById('toggle-reader').classList.toggle('on', state.readerMode);
+  applyReaderMode();
+}
+
+function applyReaderMode() {
+  if (!state.currentTextId) return;
+  const t = state.texts[state.currentTextId];
+  document.querySelectorAll('.word').forEach(el => {
+    const key = el.dataset.key;
+    const meaning = t.meanings[key];
+
+    // Always restore to plain text first
+    el.innerHTML = escHtml(el.dataset.word);
+
+    // Then add ruby on top if mode is on and there's a meaning
+    if (state.readerMode && meaning) {
+      el.innerHTML = `<span class="word-wrap"><span class="word-ruby">${escHtml(meaning)}</span>${escHtml(el.dataset.word)}</span>`;
+    }
+  });
+}
+
+// ── Sentence Mode (integral) ──────────────────────────────────────────
+function toggleSentenceMode() {
+  state.sentenceMode = !state.sentenceMode;
+  document.getElementById('toggle-sentence').classList.toggle('on', state.sentenceMode);
+  if (state.sentenceMode) {
+    state.currentSentence = 0;
+    renderSentenceView();
+  } else {
+    renderText(state.currentTextId);
+    updateProgress();
+  }
+}
+
+function renderSentenceView() {
+  const sentences = state.sentences;
+  const idx = state.currentSentence;
+  if (!sentences.length) return;
+
+  const container = document.getElementById('text-content');
+  const total = sentences.length;
+  const sentence = sentences[Math.min(idx, total - 1)];
+
+  container.innerHTML = `
+    <div class="sentence-view">
+      <div class="sentence-counter">${idx + 1} <span>/ ${total}</span></div>
+      <div class="sentence-text">${escHtml(sentence)}</div>
+      <div class="sentence-nav">
+        <button class="btn btn-ghost btn-sm" onclick="goPrevSentence()" ${idx === 0 ? 'disabled' : ''}>← Anterior</button>
+        <button class="btn btn-ghost btn-sm" onclick="goNextSentence()" ${idx >= total - 1 ? 'disabled' : ''}>Próxima →</button>
+      </div>
+    </div>
+  `;
+
+  // Update progress
+  const pct = total > 1 ? (idx / (total - 1)) * 100 : 100;
+  document.getElementById('progress-bar').style.width = pct + '%';
+}
+
+function goNextSentence() {
+  if (state.currentSentence < state.sentences.length - 1) {
+    state.currentSentence++;
+    renderSentenceView();
+  }
+}
+function goPrevSentence() {
+  if (state.currentSentence > 0) {
+    state.currentSentence--;
+    renderSentenceView();
+  }
+}
+
+// ── Progress ──────────────────────────────────────────────────────────
+function updateProgress() {
+  const area = document.getElementById('reader-area');
+  const max = area.scrollHeight - area.clientHeight;
+  const pct = max > 0 ? (area.scrollTop / max) * 100 : 0;
+  document.getElementById('progress-bar').style.width = pct + '%';
+}
+
+// ── Mobile sidebar ────────────────────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+document.getElementById('reader-area').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.remove('open');
+});
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { closePopover(); closeTextModal(); closeLangModal(); }
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'ArrowRight' && state.sentenceMode) goNextSentence();
+  if (e.key === 'ArrowLeft'  && state.sentenceMode) goPrevSentence();
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) {
+  return String(s).replace(/"/g,'&quot;');
+}
+
+// ── Start ─────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
