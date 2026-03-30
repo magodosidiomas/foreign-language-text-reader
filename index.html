@@ -169,11 +169,11 @@
   }
   .word-ruby {
     display: block;
-    font-family: var(--font-ui); font-size: 10px; line-height: 1.2;
-    color: var(--accent); font-weight: 500;
+    font-family: var(--font-ui); font-size: 13px; line-height: 1.3;
+    color: var(--text-2); font-weight: 400;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    max-width: 120px;
-    margin-bottom: 1px;
+    max-width: 160px;
+    margin-bottom: 2px;
   }
 
   /* Empty state */
@@ -350,7 +350,7 @@
     color: var(--text-3); letter-spacing: .06em; font-weight: 500;
   }
   .sentence-text {
-    font-family: var(--font-read); font-size: 24px; line-height: 1.8;
+    font-family: var(--font-read); font-size: 24px; line-height: 2.4;
     color: var(--text); max-width: 600px;
   }
   .sentence-nav { display: flex; gap: 10px; }
@@ -954,20 +954,38 @@ function renderSentenceView() {
   const idx = state.currentSentence;
   if (!sentences.length) return;
 
-  const container = document.getElementById('text-content');
   const total = sentences.length;
   const sentence = sentences[Math.min(idx, total - 1)];
+  const t = state.texts[state.currentTextId];
 
+  // Tokenize the sentence exactly like the full reader
+  const tokens = tokenizeBody(sentence);
+  const tokenizedHtml = tokens.map(token => {
+    if (!token) return '';
+    if (!isWord(token)) {
+      if (token.includes('\n')) return '<br>';
+      return escHtml(token);
+    }
+    const key = token.toLowerCase();
+    const meaning = t.meanings[key];
+    const highlighted = meaning ? 'highlighted' : '';
+    return `<span class="word ${highlighted}" data-word="${escAttr(token)}" data-key="${escAttr(key)}" onclick="wordClick(this, event)">${escHtml(token)}</span>`;
+  }).join('');
+
+  const container = document.getElementById('text-content');
   container.innerHTML = `
     <div class="sentence-view">
       <div class="sentence-counter">${idx + 1} <span>/ ${total}</span></div>
-      <div class="sentence-text">${escHtml(sentence)}</div>
+      <div class="sentence-text">${tokenizedHtml}</div>
       <div class="sentence-nav">
         <button class="btn btn-ghost btn-sm" onclick="goPrevSentence()" ${idx === 0 ? 'disabled' : ''}>← Anterior</button>
         <button class="btn btn-ghost btn-sm" onclick="goNextSentence()" ${idx >= total - 1 ? 'disabled' : ''}>Próxima →</button>
       </div>
     </div>
   `;
+
+  // Apply reader mode (furigana) if active
+  applyReaderMode();
 
   // Update progress
   const pct = total > 1 ? (idx / (total - 1)) * 100 : 100;
