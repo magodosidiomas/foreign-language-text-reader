@@ -879,27 +879,28 @@ function save() {
 
 function load() {
   try {
-    // Try new format first
+    // Always read from reader_v4 first
     let s = JSON.parse(localStorage.getItem('reader_v4') || 'null');
 
-    // Migrate from v3 if needed
-    if (!s) {
-      const old = JSON.parse(localStorage.getItem('reader_v3') || '{}');
-      if (old.texts) {
-        s = { ...old, globalMeanings: {} };
+    // Migrate from v3 only if v4 is absent or empty
+    if (!s || (!s.texts && !s.activeLangs)) {
+      const old = JSON.parse(localStorage.getItem('reader_v3') || 'null');
+      if (old && (old.texts || old.activeLangs)) {
+        s = { ...old, globalMeanings: s?.globalMeanings || {} };
         // Lift per-text meanings into globalMeanings
-        Object.values(old.texts).forEach(t => {
+        Object.values(old.texts || {}).forEach(t => {
           if (!t.meanings) return;
           Object.entries(t.meanings).forEach(([key, m]) => {
-            const val = typeof m === 'string' ? m : m.val;
+            const val = typeof m === 'string' ? m : m?.val;
             if (!val) return;
             if (!s.globalMeanings[key]) s.globalMeanings[key] = [];
             if (!s.globalMeanings[key].includes(val)) s.globalMeanings[key].push(val);
           });
-          // Remove old meanings from text, add empty favorites
           t.favorites = {};
           delete t.meanings;
         });
+        // Immediately persist migrated data so it's safe
+        localStorage.setItem('reader_v4', JSON.stringify(s));
       }
     }
 
