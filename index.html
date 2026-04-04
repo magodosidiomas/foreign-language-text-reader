@@ -2,462 +2,688 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Reader</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
+<!--
+  ╔══════════════════════════════════════════════════════════╗
+  ║  READER  —  single-file app                             ║
+  ║                                                          ║
+  ║  Views:                                                  ║
+  ║    #view-home    Language selector + text list           ║
+  ║    #view-reader  Full text reader                        ║
+  ║    #view-sentence Sentence-by-sentence mode              ║
+  ║                                                          ║
+  ║  Key features in this build:                             ║
+  ║    • Homepage with text list (no persistent sidebar)     ║
+  ║    • Move text between languages (edit modal)            ║
+  ║    • Language auto-detect via trigram scoring (offline)  ║
+  ║    • Sentence slider navigation (click + drag + swipe)   ║
+  ║    • Finish options: close session / back to full text   ║
+  ╚══════════════════════════════════════════════════════════╝
+-->
+
 <style>
-  /* ── Reset & Tokens ─────────────────────────────────────────────── */
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* ═══════════════════════════════════════════════════════════════════
+   TOKENS
+   ═══════════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  :root {
-    --bg:        #111213;
-    --surface:   #18191b;
-    --surface2:  #202224;
-    --surface3:  #2a2d30;
-    --border:    #2e3135;
-    --border2:   #3a3e44;
-    --text:      #e2e4e7;
-    --text-2:    #9aa0aa;
-    --text-3:    #5e6470;
-    --accent:    #5b8dee;
-    --accent-bg: rgba(91,141,238,.12);
-    --yellow:    #f5c842;
-    --yellow-bg: rgba(245,200,66,.15);
-    --green:     #4caf82;
-    --green-bg:  rgba(76,175,130,.15);
-    --red:       #e05b5b;
-    --red-bg:    rgba(224,91,91,.13);
-    --radius:    8px;
-    --radius-lg: 14px;
-    --font-ui:   'DM Sans', sans-serif;
-    --font-read: 'Lora', Georgia, serif;
-    --transition: 140ms ease;
-  }
+:root {
+  --bg:        #111213;
+  --surface:   #18191b;
+  --surface2:  #202224;
+  --surface3:  #2a2d30;
+  --border:    #2e3135;
+  --border2:   #3a3e44;
+  --text:      #e2e4e7;
+  --text-2:    #9aa0aa;
+  --text-3:    #5e6470;
+  --accent:    #5b8dee;
+  --accent-bg: rgba(91,141,238,.13);
+  --yellow-bg: rgba(245,200,66,.18);
+  --red:       #e05b5b;
+  --radius:    8px;
+  --radius-lg: 14px;
+  --font-ui:   'DM Sans', sans-serif;
+  --font-read: 'Lora', Georgia, serif;
+  --tr:        150ms ease;
+}
 
-  html, body { height: 100%; font-family: var(--font-ui); background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.5; }
+html, body {
+  height: 100%; font-family: var(--font-ui);
+  background: var(--bg); color: var(--text);
+  font-size: 15px; line-height: 1.5; overflow: hidden;
+}
 
-  /* ── Layout ──────────────────────────────────────────────────────── */
-  #app { display: flex; height: 100vh; overflow: hidden; }
+/* ═══════════════════════════════════════════════════════════════════
+   VIEW SYSTEM  — only one view visible at a time
+   ═══════════════════════════════════════════════════════════════════ */
+.view {
+  position: fixed; inset: 0;
+  display: none; flex-direction: column;
+  background: var(--bg); overflow: hidden;
+}
+.view.active { display: flex; }
 
-  /* Sidebar */
-  #sidebar {
-    width: 260px; min-width: 260px;
-    background: var(--surface);
-    border-right: 1px solid var(--border);
-    display: flex; flex-direction: column;
-    overflow: hidden;
-    transition: transform var(--transition);
-  }
+/* ═══════════════════════════════════════════════════════════════════
+   SHARED TOPBAR
+   ═══════════════════════════════════════════════════════════════════ */
+.topbar {
+  height: 52px; display: flex; align-items: center; gap: 10px;
+  padding: 0 20px; border-bottom: 1px solid var(--border);
+  background: var(--surface); flex-shrink: 0;
+}
+.topbar-title {
+  flex: 1; font-size: 15px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.topbar-title.dim { color: var(--text-2); font-weight: 400; }
 
-  .sidebar-header {
-    padding: 16px 16px 12px;
-    border-bottom: 1px solid var(--border);
-    display: flex; flex-direction: column; gap: 12px;
-  }
+/* ═══════════════════════════════════════════════════════════════════
+   BUTTONS
+   ═══════════════════════════════════════════════════════════════════ */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: none; border-radius: var(--radius); cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 500; padding: 8px 16px;
+  transition: opacity var(--tr), background var(--tr), color var(--tr);
+  white-space: nowrap; text-decoration: none;
+}
+.btn:active { opacity: .75; }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: #4a7de0; }
+.btn-ghost { background: none; border: 1px solid var(--border2); color: var(--text-2); }
+.btn-ghost:hover { background: var(--surface3); color: var(--text); }
+.btn-sm { padding: 7px 14px; font-size: 13px; }
+/* Material Icons */
+.mi {
+  font-family: 'Material Icons'; font-style: normal; font-weight: 400;
+  font-size: 20px; line-height: 1; display: inline-flex; align-items: center;
+  user-select: none; vertical-align: middle;
+}
 
-  .app-logo {
-    font-size: 13px; font-weight: 500; letter-spacing: .04em;
-    color: var(--text-2); text-transform: uppercase;
-    display: flex; align-items: center; gap: 8px;
-  }
-  .app-logo span { color: var(--accent); }
+.btn-icon {
+  background: none; border: none; cursor: pointer; color: var(--text-3);
+  padding: 7px; border-radius: var(--radius);
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 36px; min-height: 36px;
+  transition: color var(--tr), background var(--tr); font-family: var(--font-ui);
+}
+.btn-icon:hover { color: var(--text); background: var(--surface3); }
+.btn-icon.danger:hover { color: var(--red); }
 
-  /* Language selector */
-  #lang-btn {
-    display: flex; align-items: center; gap: 8px;
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 7px 10px;
-    cursor: pointer; font: inherit; font-size: 13px; color: var(--text);
-    width: 100%; text-align: left; transition: border-color var(--transition);
-  }
-  #lang-btn:hover { border-color: var(--border2); }
-  #lang-btn .flag { font-size: 16px; }
-  #lang-btn .chevron { margin-left: auto; color: var(--text-3); font-size: 11px; }
+/* toggle switch */
+.toggle {
+  width: 32px; height: 18px; background: var(--surface3);
+  border-radius: 99px; cursor: pointer; position: relative;
+  border: none; transition: background var(--tr); flex-shrink: 0;
+}
+.toggle::after {
+  content: ''; position: absolute; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--text-3); top: 2px; left: 2px;
+  transition: transform var(--tr), background var(--tr);
+}
+.toggle.on { background: var(--accent-bg); border: 1px solid var(--accent); }
+.toggle.on::after { transform: translateX(14px); background: var(--accent); }
+.toggle-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
 
-  /* Text list */
-  .sidebar-texts { flex: 1; overflow-y: auto; padding: 8px 0; }
-  .sidebar-texts::-webkit-scrollbar { width: 4px; }
-  .sidebar-texts::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+/* ═══════════════════════════════════════════════════════════════════
+   FORM ELEMENTS
+   ═══════════════════════════════════════════════════════════════════ */
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.field label { font-size: 12px; color: var(--text-2); font-weight: 500; }
+.input, .textarea, select.input {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text);
+  font: inherit; padding: 9px 12px; outline: none;
+  transition: border-color var(--tr); width: 100%;
+}
+.input:focus, .textarea:focus, select.input:focus { border-color: var(--accent); }
+.input::placeholder, .textarea::placeholder { color: var(--text-3); }
+.textarea { resize: vertical; min-height: 200px; font-size: 14px; line-height: 1.65; }
+select.input option { background: var(--surface2); }
 
-  .text-item {
-    display: flex; align-items: center;
-    padding: 7px 14px; cursor: pointer;
-    border-radius: 0; gap: 10px; position: relative;
-    transition: background var(--transition);
-    border-left: 2px solid transparent;
-  }
-  .text-item:hover { background: var(--surface2); }
-  .text-item.active { background: var(--surface2); border-left-color: var(--accent); }
-  .text-item .item-title {
-    flex: 1; font-size: 13px; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; color: var(--text);
-  }
-  .text-item.active .item-title { color: var(--accent); }
-  .text-item .item-lang { font-size: 11px; color: var(--text-3); }
-  .text-item-actions {
-    display: none; gap: 2px;
-  }
-  .text-item:hover .text-item-actions { display: flex; }
-  .icon-btn {
-    background: none; border: none; cursor: pointer;
-    color: var(--text-3); padding: 3px 5px; border-radius: 4px;
-    font-size: 12px; line-height: 1; transition: color var(--transition), background var(--transition);
-  }
-  .icon-btn:hover { color: var(--text); background: var(--surface3); }
-  .icon-btn.danger:hover { color: var(--red); }
+/* ═══════════════════════════════════════════════════════════════════
+   OVERLAYS & MODALS
+   ═══════════════════════════════════════════════════════════════════ */
+.overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200; opacity: 0; pointer-events: none; transition: opacity var(--tr);
+}
+.overlay.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: var(--radius-lg); width: min(480px, calc(100vw - 28px));
+  padding: 24px; max-height: calc(100vh - 56px); overflow-y: auto;
+  display: flex; flex-direction: column;
+  transform: translateY(10px) scale(.98); transition: transform var(--tr);
+}
+.overlay.open .modal { transform: none; }
+.modal-title { font-size: 15px; font-weight: 600; margin-bottom: 18px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.modal-footer.spread { justify-content: space-between; }
 
-  .sidebar-footer {
-    padding: 12px 14px; border-top: 1px solid var(--border);
-  }
+/* ═══════════════════════════════════════════════════════════════════
+   LANGUAGE PICKER  (modal grid — add language)
+   ═══════════════════════════════════════════════════════════════════ */
+.lang-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 4px; overflow-y: auto; max-height: 380px; padding-right: 2px;
+}
+.lang-grid::-webkit-scrollbar { width: 4px; }
+.lang-grid::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.lang-option {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 12px; border-radius: var(--radius);
+  cursor: pointer; font-size: 13px;
+  transition: background var(--tr); border: 1px solid transparent;
+}
+.lang-option:hover { background: var(--surface2); }
+.lang-option.selected { background: var(--accent-bg); border-color: rgba(91,141,238,.3); }
+.lang-option .flag { font-size: 20px; line-height: 1; }
 
-  /* ── Main ─────────────────────────────────────────────────────────── */
-  #main {
-    flex: 1; display: flex; flex-direction: column; overflow: hidden;
-  }
+/* ═══════════════════════════════════════════════════════════════════
+   VIEW: HOME  — single topbar + text list (no sidebar)
+   ═══════════════════════════════════════════════════════════════════ */
+#view-home { flex-direction: column; }
 
-  /* Top bar */
-  #topbar {
-    height: 48px; display: flex; align-items: center;
-    padding: 0 20px; gap: 12px;
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-    flex-shrink: 0;
-  }
-  #topbar .title-display {
-    flex: 1; font-size: 14px; font-weight: 500; color: var(--text);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  #topbar .title-display.empty { color: var(--text-3); font-weight: 400; }
+/* home topbar */
+#home-topbar {
+  height: 52px; display: flex; align-items: center; gap: 8px;
+  padding: 0 16px; border-bottom: 1px solid var(--border);
+  background: var(--surface); flex-shrink: 0;
+}
+.home-logo {
+  font-size: 14px; font-weight: 600; letter-spacing: .03em;
+  color: var(--text-2); display: flex; align-items: center; gap: 4px;
+  margin-right: 4px; white-space: nowrap;
+}
+.home-logo span { color: var(--accent); }
 
-  /* Progress bar */
-  #progress-bar-wrap {
-    height: 2px; background: var(--surface3); flex-shrink: 0;
-  }
-  #progress-bar { height: 100%; background: var(--accent); width: 0%; transition: width .3s; }
+/* language dropdown button */
+#lang-dropdown-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: var(--radius); padding: 6px 10px;
+  cursor: pointer; font: inherit; font-size: 13px; font-weight: 500;
+  color: var(--text); transition: background var(--tr), border-color var(--tr);
+  white-space: nowrap; max-width: 180px;
+}
+#lang-dropdown-btn:hover { background: var(--surface3); border-color: var(--accent); }
+#lang-dropdown-btn .chevron { color: var(--text-3); font-size: 10px; transition: transform var(--tr); }
+#lang-dropdown-btn.open .chevron { transform: rotate(180deg); }
 
-  /* Reader area */
-  #reader-area {
-    flex: 1; overflow-y: auto; padding: 48px 24px;
-    scroll-behavior: smooth;
-  }
-  #reader-area::-webkit-scrollbar { width: 6px; }
-  #reader-area::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+/* dropdown panel */
+#lang-dropdown-panel {
+  position: fixed; z-index: 150;
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: var(--radius-lg); padding: 6px;
+  min-width: 200px; max-height: 320px; overflow-y: auto;
+  box-shadow: 0 8px 28px rgba(0,0,0,.5);
+  display: none; flex-direction: column; gap: 1px;
+}
+#lang-dropdown-panel.open { display: flex; }
+#lang-dropdown-panel::-webkit-scrollbar { width: 4px; }
+#lang-dropdown-panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
-  #text-content {
-    max-width: 660px; margin: 0 auto;
-    font-family: var(--font-read); font-size: 19px; line-height: 1.85;
-    color: var(--text);
-    user-select: text;
-  }
+.lang-dd-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: var(--radius);
+  cursor: pointer; font-size: 13px; font-weight: 500;
+  transition: background var(--tr); border: 1px solid transparent;
+}
+.lang-dd-item:hover { background: var(--surface2); }
+.lang-dd-item.active { background: var(--accent-bg); border-color: rgba(91,141,238,.25); color: var(--accent); }
+.lang-dd-item .flag { font-size: 17px; }
+.lang-dd-item .count {
+  margin-left: auto; font-size: 11px; color: var(--text-3);
+  background: var(--surface3); border-radius: 99px; padding: 1px 7px;
+}
+.lang-dd-separator {
+  height: 1px; background: var(--border); margin: 4px 0;
+}
+.lang-dd-add {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: var(--radius);
+  cursor: pointer; font-size: 13px; color: var(--text-2);
+  transition: background var(--tr);
+}
+.lang-dd-add:hover { background: var(--surface2); color: var(--text); }
 
-  /* Word tokens */
-  .word {
-    cursor: pointer; border-radius: 3px;
-    padding: 0 1px; display: inline;
-    transition: background var(--transition);
-    position: relative;
-  }
-  .word:hover { background: var(--surface3); }
-  .word.highlighted { background: var(--yellow-bg); }
-  .word.selected { background: var(--accent-bg); outline: 1px solid var(--accent); outline-offset: 1px; }
+/* spacer pushes gear to the right */
+#home-topbar-spacer { flex: 1; }
 
-  /* Furigana / reader mode */
-  .word-wrap {
-    display: inline-block; text-align: center;
-    position: relative; vertical-align: bottom;
-  }
-  .word-ruby {
-    display: block;
-    font-family: var(--font-ui); font-size: 13px; line-height: 1.3;
-    color: var(--text-2); font-weight: 400;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    max-width: 160px;
-    margin-bottom: 2px;
-  }
+/* home text area — no second header bar */
+#home-texts {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
 
-  /* Empty state */
-  #empty-state {
-    max-width: 380px; margin: 80px auto;
-    text-align: center; display: none;
-  }
-  #empty-state .empty-icon { font-size: 40px; margin-bottom: 16px; }
-  #empty-state h2 { font-size: 16px; font-weight: 500; margin-bottom: 8px; }
-  #empty-state p { font-size: 13px; color: var(--text-3); line-height: 1.6; }
+#home-text-list { flex: 1; overflow-y: auto; padding: 14px 20px; }
+#home-text-list::-webkit-scrollbar { width: 6px; }
+#home-text-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
 
-  /* ── Buttons & controls ──────────────────────────────────────────── */
-  .btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-    border: none; border-radius: var(--radius); cursor: pointer;
-    font: inherit; font-size: 13px; font-weight: 500;
-    padding: 7px 14px; transition: opacity var(--transition), background var(--transition);
-    white-space: nowrap;
-  }
-  .btn:active { opacity: .8; }
-  .btn-primary { background: var(--accent); color: #fff; }
-  .btn-primary:hover { background: #4a7de0; }
-  .btn-ghost {
-    background: none; border: 1px solid var(--border2);
-    color: var(--text-2);
-  }
-  .btn-ghost:hover { background: var(--surface3); color: var(--text); }
-  .btn-sm { padding: 5px 10px; font-size: 12px; }
+/* text cards */
+.text-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; border-radius: var(--radius);
+  border: 1px solid var(--border); background: var(--surface);
+  cursor: pointer; margin-bottom: 8px;
+  transition: border-color var(--tr), background var(--tr);
+}
+.text-card:hover { border-color: var(--border2); background: var(--surface2); }
+.text-card:active { background: var(--surface3); }
+.text-card-title { flex: 1; font-size: 14px; font-weight: 500; }
+.text-card-meta { font-size: 12px; color: var(--text-3); margin-top: 3px; }
+.text-card-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.home-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  flex: 1; gap: 12px; color: var(--text-3); font-size: 14px; padding: 40px;
+  text-align: center;
+}
+.home-empty .icon { font-size: 36px; }
 
-  /* Toggle */
-  .toggle-row {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 12px; color: var(--text-2); white-space: nowrap;
-  }
-  .toggle {
-    width: 30px; height: 17px;
-    background: var(--surface3); border-radius: 99px;
-    cursor: pointer; position: relative;
-    transition: background var(--transition); flex-shrink: 0;
-    border: none;
-  }
-  .toggle::after {
-    content: ''; position: absolute;
-    width: 13px; height: 13px; border-radius: 50%;
-    background: var(--text-3); top: 2px; left: 2px;
-    transition: transform var(--transition), background var(--transition);
-  }
-  .toggle.on { background: var(--accent-bg); border: 1px solid var(--accent); }
-  .toggle.on::after { transform: translateX(13px); background: var(--accent); }
+/* settings dropdown */
+#settings-panel {
+  position: fixed; z-index: 150;
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: var(--radius-lg); padding: 6px;
+  min-width: 180px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.5);
+  display: none; flex-direction: column; gap: 1px;
+}
+#settings-panel.open { display: flex; }
+.settings-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; border-radius: var(--radius);
+  cursor: pointer; font-size: 13px; color: var(--text-2);
+  transition: background var(--tr);
+}
+.settings-item:hover { background: var(--surface2); color: var(--text); }
 
-  /* ── Overlay / Modal ─────────────────────────────────────────────── */
-  .overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,.55);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 100; opacity: 0; pointer-events: none;
-    transition: opacity var(--transition);
-  }
-  .overlay.open { opacity: 1; pointer-events: all; }
+@media (max-width: 640px) {
+  #home-texts-header { padding: 12px 14px; }
+  #home-text-list { padding: 10px 14px; }
+  #home-topbar { padding: 0 12px; }
+  #lang-dropdown-btn { max-width: 140px; }
+}
 
-  .modal {
-    background: var(--surface);
-    border: 1px solid var(--border2);
-    border-radius: var(--radius-lg);
-    width: min(440px, calc(100vw - 32px));
-    padding: 24px;
-    transform: translateY(8px) scale(.98);
-    transition: transform var(--transition);
-    max-height: calc(100vh - 64px);
-    display: flex; flex-direction: column;
-  }
-  .overlay.open .modal { transform: none; }
+/* ═══════════════════════════════════════════════════════════════════
+   VIEW: READER  (full text)
+   ═══════════════════════════════════════════════════════════════════ */
+#reader-progress-bar-wrap { height: 2px; background: var(--surface3); flex-shrink: 0; }
+#reader-progress-bar { height: 100%; background: var(--accent); width: 0%; transition: width .4s; }
 
-  .modal-title {
-    font-size: 15px; font-weight: 600; margin-bottom: 16px;
-  }
-  .modal-footer {
-    display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px;
-  }
+#reader-scroll {
+  flex: 1; overflow-y: auto; padding: 52px 24px;
+  scroll-behavior: smooth;
+}
+#reader-scroll::-webkit-scrollbar { width: 6px; }
+#reader-scroll::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
 
-  /* ── Form elements ───────────────────────────────────────────────── */
-  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
-  .field label { font-size: 12px; color: var(--text-2); font-weight: 500; }
-  .input, .textarea {
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: var(--radius); color: var(--text);
-    font: inherit; padding: 8px 12px;
-    outline: none; transition: border-color var(--transition);
-    width: 100%;
-  }
-  .input:focus, .textarea:focus { border-color: var(--accent); }
-  .input::placeholder, .textarea::placeholder { color: var(--text-3); }
-  .textarea { resize: vertical; min-height: 180px; font-size: 14px; line-height: 1.6; }
+#reader-content {
+  max-width: 660px; margin: 0 auto;
+  font-family: var(--font-read); font-size: 19px; line-height: 1.85;
+  color: var(--text); user-select: text;
+}
 
-  .input-row { display: flex; gap: 8px; }
-  .input-row .input { flex: 1; }
+/* reader controls in topbar */
+#reader-controls { display: flex; align-items: center; gap: 10px; }
 
-  /* ── Language picker ─────────────────────────────────────────────── */
-  #lang-modal .lang-grid {
-    display: grid; grid-template-columns: 1fr 1fr;
-    gap: 4px; overflow-y: auto; max-height: 360px;
-    padding-right: 4px;
-  }
-  #lang-modal .lang-grid::-webkit-scrollbar { width: 4px; }
-  #lang-modal .lang-grid::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+/* ═══════════════════════════════════════════════════════════════════
+   WORD TOKENS
+   ═══════════════════════════════════════════════════════════════════ */
+.word {
+  cursor: pointer; border-radius: 3px; padding: 0 1px; display: inline;
+  transition: background var(--tr);
+}
+.word:hover { background: var(--surface3); }
+.word.highlighted { background: var(--yellow-bg); }
+.word.selected { background: var(--accent-bg); outline: 1px solid var(--accent); outline-offset: 1px; }
 
-  .lang-option {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 10px; border-radius: var(--radius);
-    cursor: pointer; font-size: 13px;
-    transition: background var(--transition);
-    border: 1px solid transparent;
-  }
-  .lang-option:hover { background: var(--surface2); }
-  .lang-option.selected { background: var(--accent-bg); border-color: rgba(91,141,238,.3); }
-  .lang-option .flag { font-size: 18px; }
+/* furigana */
+.word-wrap { display: inline-block; text-align: center; vertical-align: bottom; }
+.word-ruby {
+  display: block; font-family: var(--font-ui); font-size: 13px; line-height: 1.3;
+  color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 160px; margin-bottom: 2px;
+}
 
-  /* ── Word popover ─────────────────────────────────────────────────── */
-  #word-popover {
-    position: fixed; z-index: 200;
-    background: var(--surface);
-    border: 1px solid var(--border2);
-    border-radius: var(--radius-lg);
-    padding: 14px 16px;
-    width: 240px;
-    box-shadow: 0 8px 24px rgba(0,0,0,.4);
-    display: none;
-    flex-direction: column; gap: 10px;
-  }
-  #word-popover.open { display: flex; }
+/* ═══════════════════════════════════════════════════════════════════
+   VIEW: SENTENCE MODE
+   ═══════════════════════════════════════════════════════════════════ */
+#view-sentence { justify-content: stretch; }
 
-  .pop-word {
-    font-family: var(--font-read); font-size: 17px;
-    font-weight: 500; color: var(--text);
-  }
-  .pop-meaning-row {
-    display: flex; align-items: flex-start; gap: 8px;
-  }
-  .pop-meaning {
-    flex: 1; font-size: 13px; color: var(--text-2);
-    line-height: 1.5;
-  }
-  .pop-meaning.empty { color: var(--text-3); font-style: italic; }
-  .pop-remove {
-    background: none; border: none; cursor: pointer;
-    color: var(--text-3); font-size: 14px; line-height: 1;
-    padding: 2px 3px; border-radius: 4px; flex-shrink: 0;
-    transition: color var(--transition);
-    display: none;
-  }
-  .pop-remove:hover { color: var(--red); }
-  .pop-remove.visible { display: block; }
+/* sentence topbar has back button + title */
+#sentence-topbar { justify-content: flex-start; }
+#sentence-topbar .topbar-title { font-size: 13px; color: var(--text-2); font-weight: 400; }
 
-  .pop-input {
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 6px; color: var(--text);
-    font: inherit; font-size: 13px; padding: 7px 10px;
-    outline: none; width: 100%;
-    transition: border-color var(--transition);
-  }
-  .pop-input:focus { border-color: var(--accent); }
-  .pop-input::placeholder { color: var(--text-3); }
+/*
+  Sentence slider — fat clickable/draggable track.
+  The track element itself is tall (touch target), a ::before pseudo provides
+  the visible rail, fill and thumb are absolute inside position:relative track.
+*/
+#sentence-slider-wrap {
+  padding: 0 20px; background: var(--surface);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+  display: flex; align-items: center; gap: 16px; height: 48px;
+}
+#sentence-slider-track {
+  flex: 1; height: 36px; /* tall for easy touch */
+  position: relative; cursor: pointer;
+  display: flex; align-items: center;
+}
+/* visible rail */
+#sentence-slider-track::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  transform: translateY(-50%);
+  height: 6px; background: var(--surface3); border-radius: 99px;
+}
+#sentence-slider-fill {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  height: 6px; background: var(--accent); border-radius: 99px;
+  width: 0%; pointer-events: none;
+}
+#sentence-slider-thumb {
+  position: absolute; top: 50%; left: 0%;
+  transform: translate(-50%, -50%);
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; border: 3px solid var(--accent);
+  box-shadow: 0 1px 5px rgba(0,0,0,.5);
+  pointer-events: none; z-index: 1;
+}
+#sentence-counter-label {
+  font-size: 13px; color: var(--text-2); white-space: nowrap; flex-shrink: 0;
+  font-variant-numeric: tabular-nums; min-width: 56px; text-align: right;
+}
 
-  .pop-actions { display: flex; gap: 6px; align-items: center; }
-  .pop-hint { font-size: 11px; color: var(--text-3); margin-left: auto; }
+/* sentence content area — centered, flex column */
+#sentence-scroll {
+  flex: 1; overflow-y: auto; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 32px 24px; gap: 24px;
+}
 
-  /* ── Sentence View (integral mode) ──────────────────────────────── */
-  .sentence-view {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    min-height: calc(100vh - 100px);
-    gap: 32px; text-align: center; padding: 40px 16px;
-  }
-  .sentence-counter {
-    font-family: var(--font-ui); font-size: 12px;
-    color: var(--text-3); letter-spacing: .06em; font-weight: 500;
-  }
-  .sentence-text {
-    font-family: var(--font-read); font-size: 24px; line-height: 2.4;
-    color: var(--text); max-width: 600px;
-  }
-  .sentence-nav { display: flex; gap: 10px; }
-  .sentence-nav .btn[disabled] { opacity: .3; cursor: default; pointer-events: none; }
+/* counter above the sentence (e.g. "3 / 22") */
+#sentence-counter-inline {
+  font-size: 13px; color: var(--text-3); letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+}
 
-  /* ── Mobile tweaks ───────────────────────────────────────────────── */
-  #menu-toggle {
-    display: none; background: none; border: none;
-    color: var(--text); font-size: 18px; cursor: pointer; padding: 4px;
-  }
+/* the sentence text itself */
+#sentence-text {
+  font-family: var(--font-read); font-size: 24px; line-height: 2.4;
+  color: var(--text); max-width: 600px; text-align: center;
+}
 
-  @media (max-width: 700px) {
-    #sidebar {
-      position: fixed; inset: 0 auto 0 0; z-index: 90;
-      transform: translateX(-100%);
-      width: 280px;
-    }
-    #sidebar.open { transform: none; box-shadow: 4px 0 20px rgba(0,0,0,.5); }
-    #menu-toggle { display: flex; }
-    #text-content { font-size: 17px; }
-    .sentence-text { font-size: 19px; }
-    .modal { padding: 20px; }
-  }
+/* prev/next buttons row, close to the text */
+#sentence-nav {
+  display: flex; align-items: center; gap: 12px;
+}
+#sentence-nav .btn[disabled] { opacity: .28; cursor: default; pointer-events: none; }
 
-  /* ── Misc ─────────────────────────────────────────────────────────── */
-  .divider { height: 1px; background: var(--border); margin: 4px 0; }
-  kbd {
-    background: var(--surface3); border: 1px solid var(--border2);
-    border-radius: 4px; padding: 1px 5px; font-size: 11px;
-    font-family: var(--font-ui); color: var(--text-2);
-  }
+/* finish options (shown only on last sentence, replaces nav) */
+#sentence-finish-panel {
+  display: none;
+  flex-direction: column; align-items: center; gap: 10px;
+}
+#sentence-finish-panel.visible { display: flex; }
+#sentence-finish-panel p { font-size: 13px; color: var(--text-3); }
+#sentence-finish-panel .finish-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   WORD POPOVER
+   ═══════════════════════════════════════════════════════════════════ */
+#word-popover {
+  position: fixed; z-index: 300;
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: var(--radius-lg); padding: 14px 16px; width: 280px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.5);
+  display: none; flex-direction: column; gap: 10px;
+}
+#word-popover.open { display: flex; }
+.pop-word { font-family: var(--font-read); font-size: 17px; font-weight: 500; }
+
+/* meanings list */
+.pop-meanings-list { display: flex; flex-direction: column; gap: 2px; }
+.pop-meaning-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: var(--radius);
+  cursor: pointer; font-size: 13px; color: var(--text-2);
+  transition: background var(--tr); border: 1px solid transparent;
+  line-height: 1.4;
+}
+.pop-meaning-item:hover { background: var(--surface2); color: var(--text); }
+.pop-meaning-item.fav {
+  background: var(--accent-bg); border-color: rgba(91,141,238,.25);
+  color: var(--text);
+}
+.pop-meaning-item .fav-icon {
+  font-family: 'Material Icons'; font-size: 16px; flex-shrink: 0;
+  color: var(--accent); display: none;
+}
+.pop-meaning-item.fav .fav-icon { display: inline; }
+.pop-meaning-text { flex: 1; }
+.pop-del-btn {
+  background: none; border: none; cursor: pointer; color: var(--text-3);
+  display: inline-flex; align-items: center; padding: 2px; border-radius: 4px;
+  opacity: 0; transition: opacity var(--tr), color var(--tr); flex-shrink: 0;
+  font-family: 'Material Icons'; font-size: 16px; line-height: 1;
+}
+.pop-meaning-item:hover .pop-del-btn { opacity: 1; }
+.pop-del-btn:hover { color: var(--red); }
+
+.pop-empty {
+  font-size: 13px; color: var(--text-3); font-style: italic;
+  padding: 4px 2px;
+}
+
+.pop-input-row { display: flex; gap: 6px; }
+.pop-input {
+  flex: 1; background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font: inherit; font-size: 13px;
+  padding: 7px 10px; outline: none; transition: border-color var(--tr);
+}
+.pop-input:focus { border-color: var(--accent); }
+.pop-input::placeholder { color: var(--text-3); }
+.pop-save {
+  background: var(--surface3); border: 1px solid var(--border2);
+  border-radius: 6px; color: var(--text-2); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 7px 10px; flex-shrink: 0;
+  transition: background var(--tr), color var(--tr), border-color var(--tr);
+}
+.pop-save:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   LANG DETECT TOAST
+   A non-blocking banner shown below the topbar when a different language
+   is detected from what's currently selected.
+   ═══════════════════════════════════════════════════════════════════ */
+#lang-detect-toast {
+  display: none; /* shown via JS */
+  align-items: center; gap: 10px;
+  padding: 10px 20px; background: var(--surface2);
+  border-bottom: 1px solid var(--border); font-size: 13px;
+  flex-shrink: 0;
+}
+#lang-detect-toast.visible { display: flex; }
+#lang-detect-msg { flex: 1; color: var(--text-2); }
+#lang-detect-msg strong { color: var(--text); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOBILE ADJUSTMENTS
+   ═══════════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  #reader-content { font-size: 17px; }
+  #sentence-text  { font-size: 19px; }
+  #reader-scroll  { padding: 36px 16px; }
+  .modal { padding: 18px; }
+  .topbar { padding: 0 14px; }
+}
 </style>
 </head>
 <body>
 
-<div id="app">
+<!-- ════════════════════════════════════════════════════════════════
+     VIEW: HOME
+════════════════════════════════════════════════════════════════ -->
+<div class="view active" id="view-home">
 
-  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
-  <aside id="sidebar">
-    <div class="sidebar-header">
-      <div class="app-logo">Reader <span>·</span></div>
-      <button id="lang-btn" onclick="openLangModal()">
-        <span class="flag" id="lang-flag">🌐</span>
-        <span id="lang-name">Selecionar idioma</span>
-        <span class="chevron">▾</span>
+  <!-- Home topbar -->
+  <div id="home-topbar">
+    <div class="home-logo">Reader <span>·</span></div>
+
+    <!-- Language dropdown button -->
+    <button id="lang-dropdown-btn" onclick="toggleLangDropdown(event)">
+      <span id="lang-dropdown-label">Selecionar idioma</span>
+      <span class="chevron">▼</span>
+    </button>
+
+    <!-- Language dropdown panel (rendered by JS) -->
+    <div id="lang-dropdown-panel"></div>
+
+    <div id="home-topbar-spacer"></div>
+
+    <!-- Add text button (only shown when a lang is selected) -->
+    <button class="btn btn-primary btn-sm" onclick="openAddModal()" id="add-text-btn" style="display:none;">
+      Adicionar texto
+    </button>
+
+    <!-- Settings button -->
+    <button class="btn-icon" onclick="toggleSettingsPanel(event)" id="settings-btn" title="Configurações">
+      <span class="mi">settings</span>
+    </button>
+
+    <!-- Settings panel -->
+    <div id="settings-panel">
+      <div class="settings-item" onclick="exportData(); closeSettingsPanel()">
+        <span class="mi" style="font-size:18px">download</span> Exportar dados
+      </div>
+      <label class="settings-item" style="cursor:pointer;">
+        <span class="mi" style="font-size:18px">upload</span> Importar dados
+        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+      </label>
+    </div>
+  </div>
+
+  <!-- Text list for selected language -->
+  <div id="home-texts">
+    <div id="home-text-list"><!-- rendered by JS --></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     VIEW: READER  (full text)
+════════════════════════════════════════════════════════════════ -->
+<div class="view" id="view-reader">
+  <div class="topbar">
+    <button class="btn-icon" onclick="closeReader()" title="Voltar"><span class="mi">arrow_back</span></button>
+    <span class="topbar-title" id="reader-title"></span>
+    <!-- controls -->
+    <div id="reader-controls">
+      <div class="toggle-row">
+        <button class="toggle" id="toggle-reader-mode" onclick="toggleReaderMode()"></button>
+        <span>Mostrar significados</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="enterSentenceMode()" title="Frase a frase">
+        ¶ Frase a frase
       </button>
     </div>
+  </div>
 
-    <div class="sidebar-texts" id="text-list">
-      <!-- populated by JS -->
+  <!-- Lang detect toast — shown when pasted text seems to be a different language -->
+  <div id="lang-detect-toast">
+    <span id="lang-detect-msg"></span>
+    <button class="btn btn-sm btn-ghost" onclick="dismissLangToast()">Ignorar</button>
+    <button class="btn btn-sm btn-primary" id="lang-detect-change-btn" onclick="applyDetectedLang()">Mudar</button>
+  </div>
+
+  <div id="reader-progress-bar-wrap">
+    <div id="reader-progress-bar"></div>
+  </div>
+
+  <div id="reader-scroll" onscroll="updateReaderProgress()">
+    <div id="reader-content"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     VIEW: SENTENCE MODE
+════════════════════════════════════════════════════════════════ -->
+<div class="view" id="view-sentence">
+  <div class="topbar" id="sentence-topbar">
+    <button class="btn-icon" onclick="exitSentenceMode()" title="Sair do modo frase"><span class="mi">arrow_back</span></button>
+    <span class="topbar-title dim" id="sentence-title"></span>
+  </div>
+
+  <!--
+    Sentence slider: fat clickable/draggable track.
+    Click anywhere on the track to jump to that sentence.
+    Drag the thumb to scrub through sentences.
+  -->
+  <div id="sentence-slider-wrap">
+    <div id="sentence-slider-track"
+         onmousedown="sliderMouseDown(event)"
+         onclick="sliderClick(event)"
+         ontouchstart="sliderTouchStart(event)"
+         ontouchmove="sliderTouchMove(event)"
+         ontouchend="sliderTouchEnd(event)">
+      <div id="sentence-slider-fill"></div>
+      <div id="sentence-slider-thumb"></div>
+    </div>
+    <span id="sentence-counter-label">1 / 1</span>
+  </div>
+
+  <!-- All sentence content is inside the scroll area, centered -->
+  <div id="sentence-scroll">
+    <!-- Counter above the sentence -->
+    <div id="sentence-counter-inline">1 / 1</div>
+
+    <!-- The sentence text (tokenized, interactive) -->
+    <div id="sentence-text"></div>
+
+    <!-- Prev/Next nav — lives right below the text -->
+    <div id="sentence-nav">
+      <button class="btn btn-ghost btn-sm" id="sent-prev" onclick="goPrev()">← Anterior</button>
+      <button class="btn btn-ghost btn-sm" id="sent-next" onclick="goNext()">Próxima →</button>
     </div>
 
-    <div class="sidebar-footer">
-      <button class="btn btn-ghost" style="width:100%;" onclick="openAddModal()">
-        + Adicionar texto
-      </button>
-    </div>
-  </aside>
-
-  <!-- ── Main ──────────────────────────────────────────────────────── -->
-  <div id="main">
-    <div id="topbar">
-      <button id="menu-toggle" onclick="toggleSidebar()" aria-label="Menu">☰</button>
-      <span class="title-display empty" id="topbar-title">Nenhum texto selecionado</span>
-
-      <!-- Controls -->
-      <div class="toggle-row" id="reader-mode-toggle" style="display:none;">
-        <button class="toggle" id="toggle-reader" onclick="toggleReaderMode()" title="Modo leitura (furigana)"></button>
-        <span>Significados</span>
-      </div>
-      <div style="width:1px; height:20px; background:var(--border); margin:0 4px;" id="divider1" style="display:none;"></div>
-      <div class="toggle-row" id="sentence-mode-toggle" style="display:none;">
-        <button class="toggle" id="toggle-sentence" onclick="toggleSentenceMode()" title="Modo frase"></button>
-        <span>Frase a frase</span>
-      </div>
-    </div>
-
-    <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
-
-    <div id="reader-area" onscroll="updateProgress()">
-      <div id="text-content"></div>
-      <div id="empty-state">
-        <div class="empty-icon">📖</div>
-        <h2>Nenhum texto aberto</h2>
-        <p>Selecione um idioma e adicione um texto pela barra lateral para começar a ler.</p>
+    <!-- Finish panel — replaces nav on last sentence -->
+    <div id="sentence-finish-panel">
+      <p>Fim do texto 🎉</p>
+      <div class="finish-btns">
+        <button class="btn btn-ghost" onclick="finishClose()">Fechar sessão</button>
+        <button class="btn btn-primary" onclick="finishFullText()">Ver texto completo</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ── Word Popover ──────────────────────────────────────────────── -->
+<!-- ════════════════════════════════════════════════════════════════
+     WORD POPOVER  — multiple meanings
+════════════════════════════════════════════════════════════════ -->
 <div id="word-popover">
   <div class="pop-word" id="pop-word-text"></div>
-  <div class="pop-meaning-row">
-    <div class="pop-meaning" id="pop-meaning-display"></div>
-    <button class="pop-remove" id="pop-remove" onclick="clearMeaning()" title="Remover significado">×</button>
-  </div>
-  <input class="pop-input" id="pop-input" placeholder="Adicionar significado…" autocomplete="off" />
-  <div class="pop-actions">
-    <span class="pop-hint"><kbd>Enter</kbd> pra salvar</span>
+  <div class="pop-meanings-list" id="pop-meanings-list"></div>
+  <div class="pop-input-row">
+    <input class="pop-input" id="pop-input" placeholder="Adicionar significado…" autocomplete="off">
+    <button class="pop-save" onclick="addMeaning()"><span class="mi" style="font-size:18px">add</span></button>
   </div>
 </div>
 
-<!-- ── Language Modal ────────────────────────────────────────────── -->
-<div class="overlay" id="lang-overlay" onclick="closeLangModal(event)">
-  <div class="modal" id="lang-modal" onclick="event.stopPropagation()">
-    <div class="modal-title">Idioma de estudo</div>
+<!-- ════════════════════════════════════════════════════════════════
+     MODALS
+════════════════════════════════════════════════════════════════ -->
+
+<!-- Language picker (+ new language) -->
+<div class="overlay" id="lang-overlay" onclick="if(event.target===this)closeLangModal()">
+  <div class="modal">
+    <div class="modal-title">+ Adicionar idioma</div>
     <div class="lang-grid" id="lang-grid"></div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeLangModal()">Fechar</button>
@@ -465,26 +691,31 @@
   </div>
 </div>
 
-<!-- ── Add / Edit Text Modal ────────────────────────────────────── -->
-<div class="overlay" id="text-overlay" onclick="closeTextModal(event)">
-  <div class="modal" onclick="event.stopPropagation()">
+<!-- Add / Edit text -->
+<div class="overlay" id="text-overlay" onclick="if(event.target===this)closeTextModal()">
+  <div class="modal">
     <div class="modal-title" id="text-modal-title">Adicionar texto</div>
-
     <div class="field">
       <label>Título</label>
-      <input class="input" id="text-title-input" placeholder="Ex: Artigo sobre tecnologia" />
+      <input class="input" id="text-title-input" placeholder="Ex: Capítulo 1">
     </div>
-
+    <div class="field">
+      <label>Idioma</label>
+      <!-- Language select enables moving a text to a different language -->
+      <select class="input" id="text-lang-select"></select>
+    </div>
     <div class="field">
       <label>Texto</label>
-      <div class="input-row">
-        <textarea class="textarea" id="text-body-input" placeholder="Cole ou escreva o texto aqui…"></textarea>
-      </div>
-      <button class="btn btn-ghost btn-sm" onclick="pasteFromClipboard()" style="align-self:flex-start; margin-top:4px;">
+      <textarea class="textarea" id="text-body-input" placeholder="Cole ou escreva o texto aqui…" oninput="scheduleDetect()"></textarea>
+      <button class="btn btn-ghost btn-sm" onclick="pasteClipboard()" style="align-self:flex-start;margin-top:6px;">
         📋 Colar da área de transferência
       </button>
     </div>
-
+    <!-- Inline detect warning inside modal -->
+    <div id="modal-detect-warn" style="display:none; font-size:13px; color:var(--text-2);
+         background:var(--surface2); border:1px solid var(--border2); border-radius:var(--radius);
+         padding:10px 14px; margin-bottom:4px;">
+    </div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeTextModal()">Cancelar</button>
       <button class="btn btn-primary" onclick="saveText()">Salvar</button>
@@ -492,166 +723,449 @@
   </div>
 </div>
 
-<!-- ── Delete Confirm Modal ─────────────────────────────────────── -->
-<div class="overlay" id="del-overlay" onclick="closeDelModal(event)">
-  <div class="modal" onclick="event.stopPropagation()" style="max-width:360px;">
+<!-- Delete confirm -->
+<div class="overlay" id="del-overlay" onclick="if(event.target===this)closeDelModal()">
+  <div class="modal" style="max-width:360px;">
     <div class="modal-title">Deletar texto?</div>
-    <p style="font-size:13px; color:var(--text-2);">Esta ação não pode ser desfeita. O texto e todos os significados salvos serão removidos.</p>
+    <p style="font-size:13px;color:var(--text-2);">Esta ação não pode ser desfeita.</p>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeDelModal()">Cancelar</button>
-      <button class="btn btn-primary" style="background:var(--red);" onclick="confirmDelete()">Deletar</button>
+      <button class="btn btn-primary" style="background:var(--red)" onclick="confirmDelete()">Deletar</button>
     </div>
   </div>
 </div>
 
-
+<!-- ════════════════════════════════════════════════════════════════
+     SCRIPT
+════════════════════════════════════════════════════════════════ -->
 <script>
-// ── State ─────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════
+   LANGUAGE DEFINITIONS  (25 common learner languages)
+   ═══════════════════════════════════════════════════════════════════ */
 const LANGUAGES = [
-  { code:'en', name:'Inglês',        flag:'🇺🇸' },
-  { code:'es', name:'Espanhol',      flag:'🇪🇸' },
-  { code:'fr', name:'Francês',       flag:'🇫🇷' },
-  { code:'de', name:'Alemão',        flag:'🇩🇪' },
-  { code:'it', name:'Italiano',      flag:'🇮🇹' },
-  { code:'pt', name:'Português',     flag:'🇵🇹' },
-  { code:'ja', name:'Japonês',       flag:'🇯🇵' },
-  { code:'ko', name:'Coreano',       flag:'🇰🇷' },
-  { code:'zh', name:'Chinês',        flag:'🇨🇳' },
-  { code:'ru', name:'Russo',         flag:'🇷🇺' },
-  { code:'ar', name:'Árabe',         flag:'🇸🇦' },
-  { code:'hi', name:'Hindi',         flag:'🇮🇳' },
-  { code:'nl', name:'Holandês',      flag:'🇳🇱' },
-  { code:'pl', name:'Polonês',       flag:'🇵🇱' },
-  { code:'sv', name:'Sueco',         flag:'🇸🇪' },
-  { code:'no', name:'Norueguês',     flag:'🇳🇴' },
-  { code:'da', name:'Dinamarquês',   flag:'🇩🇰' },
-  { code:'fi', name:'Finlandês',     flag:'🇫🇮' },
-  { code:'tr', name:'Turco',         flag:'🇹🇷' },
-  { code:'cs', name:'Tcheco',        flag:'🇨🇿' },
-  { code:'ro', name:'Romeno',        flag:'🇷🇴' },
-  { code:'hu', name:'Húngaro',       flag:'🇭🇺' },
-  { code:'uk', name:'Ucraniano',     flag:'🇺🇦' },
-  { code:'el', name:'Grego',         flag:'🇬🇷' },
-  { code:'he', name:'Hebraico',      flag:'🇮🇱' },
+  { code:'en', name:'Inglês',      flag:'🇺🇸' },
+  { code:'es', name:'Espanhol',    flag:'🇪🇸' },
+  { code:'fr', name:'Francês',     flag:'🇫🇷' },
+  { code:'de', name:'Alemão',      flag:'🇩🇪' },
+  { code:'it', name:'Italiano',    flag:'🇮🇹' },
+  { code:'pt', name:'Português',   flag:'🇵🇹' },
+  { code:'ja', name:'Japonês',     flag:'🇯🇵' },
+  { code:'ko', name:'Coreano',     flag:'🇰🇷' },
+  { code:'zh', name:'Chinês',      flag:'🇨🇳' },
+  { code:'ru', name:'Russo',       flag:'🇷🇺' },
+  { code:'ar', name:'Árabe',       flag:'🇸🇦' },
+  { code:'hi', name:'Hindi',       flag:'🇮🇳' },
+  { code:'nl', name:'Holandês',    flag:'🇳🇱' },
+  { code:'pl', name:'Polonês',     flag:'🇵🇱' },
+  { code:'sv', name:'Sueco',       flag:'🇸🇪' },
+  { code:'no', name:'Norueguês',   flag:'🇳🇴' },
+  { code:'da', name:'Dinamarquês', flag:'🇩🇰' },
+  { code:'fi', name:'Finlandês',   flag:'🇫🇮' },
+  { code:'tr', name:'Turco',       flag:'🇹🇷' },
+  { code:'cs', name:'Tcheco',      flag:'🇨🇿' },
+  { code:'ro', name:'Romeno',      flag:'🇷🇴' },
+  { code:'hu', name:'Húngaro',     flag:'🇭🇺' },
+  { code:'uk', name:'Ucraniano',   flag:'🇺🇦' },
+  { code:'el', name:'Grego',       flag:'🇬🇷' },
+  { code:'he', name:'Hebraico',    flag:'🇮🇱' },
 ];
 
-let state = {
-  currentLang: null,   // language code
-  currentTextId: null, // active text id
-  texts: {},           // { [id]: { id, lang, title, body, meanings:{word:str}, createdAt } }
-  readerMode: false,
-  sentenceMode: false,
-  currentSentence: 0,
-  sentences: [],
+/* ═══════════════════════════════════════════════════════════════════
+   OFFLINE LANGUAGE DETECTION
+   Lightweight trigram-based scoring. No external API needed.
+   Works by comparing character trigrams in the input text against
+   prebuilt trigram profiles for each supported language.
+   Accuracy: good for 80+ chars, reliable for 300+ chars.
+   ═══════════════════════════════════════════════════════════════════ */
+
+// Characteristic trigram profiles per language (top ~30 each).
+// These are the most statistically distinctive trigrams per language.
+const LANG_PROFILES = {
+  en: ['the','ing','ion','tio','ent','and','for','hat','ter','his','tha','nth','her','ers','ons','all','ati','not','are','but','was','ith','he ','in ','is ','to ','of ','it ','at ','on '],
+  es: ['que','de ','la ','ión','el ','en ','nte','los','con','par','una','ado','por','est','del','as ','es ','al ','se ','un ','ara','aci','ien','tra','os ','las','ue ','ent','sta','mos'],
+  fr: ['les','ion','que','ent','de ','des','ons','est','ant','la ','ait','ure','ous','et ','eur','le ','tion','une','ais','tre','lle','par','ien','men','ns ','te ','en ','rs ','es ','on '],
+  de: ['die','der','ein','und','sch','ich','ung','ten','den','ist','cht','ier','che','auf','hen','gen','eit','sie','mit','für','das','not','wie','von','als','ers','des','im ','en ','er '],
+  it: ['che','ion','del','lla','gli','ent','ell','nel','una','con','per','ato','dei','are','ita','ali','nte','all','non','tra','ata','ale','sta','ica','nti','ett','ato','ità','la ','di '],
+  pt: ['que','ção','de ','da ','do ','os ','as ','não','com','uma','par','nte','por','ado','em ','tra','es ','ão ','ent','ara','est','nte','al ','se ','um ','no ','na ','ia ','ra ','is '],
+  ru: ['ого','ени','ние','ного','для','ста','про','ные','ает','ные','ств','ова','что','ост','при','это','его','ние','ии ','на ','не ','по ','то ','как','так','же ','от ','но ','из ','он '],
+  uk: ['ого','ння','ого','для','про','ста','ові','ати','ень','ної','що ','не ','на ','як ','але','від','або','між','так','вже','до ','по ','та ','це ','він','ми ','ви ','ні ','ї ','ї '],
+  pl: ['nie','prz','rze','się','cie','owy','ach','ego','nia','że ','na ','do ','się','jak','ale','czy','jest','lat','ze ','po ','to ','co ','też','już','tak','tej','jego','jest','nie ','się '],
+  nl: ['van','een','het','ing','den','ver','aan','dat','sch','zij','die','oor','gen','voor','nen','men','ier','met','bij','niet','zijn','ook','als','maar','werd','dit','heeft','meer','kan ','ze '],
+  sv: ['och','att','det','som','för','ing','ade','sig','med','den','ett','han','men','are','ter','er ','av ','på ','de ','en ','är ','ha ','om ','vi ','sa ','ge ','nu ','se ','då ','så '],
+  da: ['og ','er ','det','for','til','der','med','som','en ','sig','jeg','man','han','af ','ved','fra','har','ede','kan','men','på ','at ','de ','at ','er ','vi ','et ','om ','her','nu '],
+  no: ['og ','er ','det','for','til','med','en ','som','jeg','ikke','kan','men','på ','de ','den','har','at ','av ','om ','et ','vi ','seg','han','men','fra','noe','bli','er ','da ','år '],
+  fi: ['ään','ssa','lla','nen','sta','tta','ise','iin','nta','ään','en ','ja ','on ','ei ','se ','ne ','he ','te ','me ','ole','hän','kun','tai','nyt','yli','siis','myös','kin','voi','sen'],
+  tr: ['bir','ile','nin','lar','ler','ın ','in ','da ','de ','den','ını','lar','ler','yor','an ','en ','bu ','ne ','ki ','dı ','ye ','ya ','as ','es ','mı ','mu ','mi ','bir','ise','ama'],
+  cs: ['pro','ter','pře','že ','na ','se ','je ','ale','ale','jak','by ','ve ','při','svě','kde','si ','jen','ten','jak','tak','byl','již','zde','před','být','tím','tom','do ','co ','to '],
+  ro: ['are','ion','ent','ilor','că ','în ','nu ','se ','din','mai','sau','tot','lui','și ','de ','la ','cu ','un ','al ','pe ','pentru','ale','cei','cel','este','fie','ani','care','prin','între'],
+  hu: ['egy','hez','nek','meg','vel','ból','ből','ban','ben','hogy','nem','van','ezt','azt','is ','de ','én ','ő ','mi ','ti ','el ','ki ','be ','le ','fel','ami','aki','ez ','az ','és '],
+  el: ['και','την','τον','ότι','για','στη','στο','που','δεν','τους','τις','ους','ων ','ει ','να ','το ','τα ','τη ','οι ','με ','δε ','ας ','σε ','μι ','αν ','αι ','ου ','πω','ής ','ής '],
+  he: ['של','את','הה','לא','הם','זה','עם','כל','שה','מה','אל','על','בה','כי','אנ','הן','יש','רה','ים','ות','ית','ני','ות','ות','ות','ות','ות','ות','ות','ות'],
+  ar: ['وال','في ','من ','على','ذي ','ان ','ين ','الم','لا ','ال ','هذا','كان','إلى','بال','وال','بعد','ما ','قد ','هم ','هي ','له ','أن ','قال','من ','عن ','لقد','كل ','عند','بين','حتى'],
+  hi: ['के ','का ','की ','है ','में','एक','कि ','और','से ','को ','पर ','यह','था','वह','हैं','थे','नहीं','लिए','तो ','भी ','जो ','उन','आ ','हो ','दे ','रह','जा ','आप','हम ','सक'],
+  zh: ['的 ','了 ','在 ','是 ','我 ','有 ','他 ','不 ','这 ','中 ','来 ','上 ','大 ','为 ','和 ','国 ','到 ','就 ','也 ','可 ','年 ','着 ','说 ','人 ','那 ','地 ','要 ','时 ','道 ','出 '],
+  ja: ['する','いる','ある','です','ます','から','ため','こと','その','れる','られ','てい','のが','た。','る。','い。','は、','が、','を、','の、','と、','に、','で、','も、','て、','な、','たり','たい','れた','した'],
+  ko: ['이다','하는','있는','것이','그리','에서','으로','에게','하고','한다','있다','이고','이며','이나','이를','이가','했다','한국','것을','들이','들의','에는','에도','에게','가장','되는','하여','에서','한다','있어'],
 };
 
-// ── Persistence ─────────────────────────────────────────────────────
+/**
+ * Detect language of a text string.
+ * Returns { code, name, flag } of the best match, or null if text is too short.
+ *
+ * Algorithm:
+ *   1. Extract all character trigrams from the cleaned input.
+ *   2. For each language profile, count how many of its trigrams appear in the input.
+ *   3. Return the language with the highest overlap score.
+ */
+function detectLanguage(text) {
+  const cleaned = text.toLowerCase().replace(/\s+/g, ' ');
+  if (cleaned.length < 60) return null; // too short to be reliable
+
+  // Build a set of trigrams from the input
+  const inputTrigrams = new Set();
+  for (let i = 0; i < cleaned.length - 2; i++) {
+    inputTrigrams.add(cleaned.slice(i, i + 3));
+  }
+
+  let bestCode  = null;
+  let bestScore = 0;
+
+  for (const [code, profile] of Object.entries(LANG_PROFILES)) {
+    // Score = number of profile trigrams present in input
+    const score = profile.reduce((n, t) => n + (inputTrigrams.has(t) ? 1 : 0), 0);
+    if (score > bestScore) { bestScore = score; bestCode = code; }
+  }
+
+  // Require at least 4 trigram hits to avoid false positives on very short text
+  if (bestScore < 4) return null;
+  return LANGUAGES.find(l => l.code === bestCode) || null;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   STATE
+   Text schema:  { id, lang, title, body, favorites:{[key]:number}, createdAt }
+   globalMeanings: { [wordKey]: string[] }  — shared across all texts
+   favorites:    per-text index into globalMeanings[key]
+   ═══════════════════════════════════════════════════════════════════ */
+const state = {
+  activeLangs:      [],    // language codes the user has added
+  currentLang:      null,  // currently selected language on home screen
+  currentTextId:    null,  // text open in reader/sentence view
+  texts:            {},    // { [id]: TextObject }
+  globalMeanings:   {},    // { [wordKey]: string[] }
+  readerMode:       false, // furigana toggle
+  currentSentence:  0,
+  sentences:        [],
+  detectedLang:     null,  // populated by lang detect in reader/modal
+};
+
+/* ═══════════════════════════════════════════════════════════════════
+   PERSISTENCE
+   Storage key upgraded to reader_v4 to accommodate new data model.
+   Migration: if old reader_v3 data exists with per-text meanings,
+   it is converted to globalMeanings on first load.
+   ═══════════════════════════════════════════════════════════════════ */
 function save() {
-  localStorage.setItem('reader_state', JSON.stringify({
-    currentLang: state.currentLang,
-    currentTextId: state.currentTextId,
-    texts: state.texts,
-  }));
+  try {
+    localStorage.setItem('reader_v4', JSON.stringify({
+      activeLangs:    state.activeLangs,
+      currentLang:    state.currentLang,
+      currentTextId:  state.currentTextId,
+      texts:          state.texts,
+      globalMeanings: state.globalMeanings,
+    }));
+  } catch(e) { console.warn('Save failed', e); }
 }
 
 function load() {
   try {
-    const s = JSON.parse(localStorage.getItem('reader_state') || '{}');
-    if (s.texts) state.texts = s.texts;
-    if (s.currentLang) state.currentLang = s.currentLang;
-    if (s.currentTextId && state.texts[s.currentTextId]) state.currentTextId = s.currentTextId;
-  } catch(e) {}
+    // Try new format first
+    let s = JSON.parse(localStorage.getItem('reader_v4') || 'null');
+
+    // Migrate from v3 if needed
+    if (!s) {
+      const old = JSON.parse(localStorage.getItem('reader_v3') || '{}');
+      if (old.texts) {
+        s = { ...old, globalMeanings: {} };
+        // Lift per-text meanings into globalMeanings
+        Object.values(old.texts).forEach(t => {
+          if (!t.meanings) return;
+          Object.entries(t.meanings).forEach(([key, m]) => {
+            const val = typeof m === 'string' ? m : m.val;
+            if (!val) return;
+            if (!s.globalMeanings[key]) s.globalMeanings[key] = [];
+            if (!s.globalMeanings[key].includes(val)) s.globalMeanings[key].push(val);
+          });
+          // Remove old meanings from text, add empty favorites
+          t.favorites = {};
+          delete t.meanings;
+        });
+      }
+    }
+
+    if (!s) return;
+    if (Array.isArray(s.activeLangs)) state.activeLangs = s.activeLangs;
+    if (s.texts)          state.texts          = s.texts;
+    if (s.globalMeanings) state.globalMeanings  = s.globalMeanings;
+    if (s.currentLang)    state.currentLang    = s.currentLang;
+    if (s.currentTextId && state.texts[s.currentTextId])
+      state.currentTextId = s.currentTextId;
+
+    // Ensure all texts have a favorites map
+    Object.values(state.texts).forEach(t => {
+      if (!t.favorites) t.favorites = {};
+    });
+  } catch(e) { console.warn('Load failed', e); }
 }
 
-// ── Init ─────────────────────────────────────────────────────────────
+function exportData() {
+  const blob = new Blob([JSON.stringify({
+    activeLangs:    state.activeLangs,
+    texts:          state.texts,
+    globalMeanings: state.globalMeanings,
+  }, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `reader-backup-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function importData(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const r = new FileReader();
+  r.onload = e => {
+    try {
+      const d = JSON.parse(e.target.result);
+      if (d.texts) {
+        Object.entries(d.texts).forEach(([id, t]) => {
+          if (!t.favorites) t.favorites = {};
+          state.texts[id] = t;
+        });
+      }
+      if (d.globalMeanings) {
+        Object.entries(d.globalMeanings).forEach(([key, vals]) => {
+          if (!state.globalMeanings[key]) state.globalMeanings[key] = [];
+          vals.forEach(v => { if (!state.globalMeanings[key].includes(v)) state.globalMeanings[key].push(v); });
+        });
+      }
+      if (Array.isArray(d.activeLangs)) {
+        d.activeLangs.forEach(c => { if (!state.activeLangs.includes(c)) state.activeLangs.push(c); });
+      }
+      save(); renderHome();
+      alert(`${Object.keys(d.texts || {}).length} textos importados.`);
+    } catch { alert('Arquivo inválido.'); }
+  };
+  r.readAsText(file);
+  event.target.value = '';
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   INIT
+   ═══════════════════════════════════════════════════════════════════ */
 function init() {
   load();
-  renderLangGrid();
-  renderSidebar();
-  updateLangBtn();
-  if (state.currentTextId) openText(state.currentTextId);
-  else showEmpty(true);
+  populateLangSelect(); // fill the <select> in the text modal
+  renderHome();
 }
 
-// ── Language ─────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════
+   VIEW ROUTER — show/hide top-level views
+   ═══════════════════════════════════════════════════════════════════ */
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   HOME VIEW
+   ═══════════════════════════════════════════════════════════════════ */
+function renderHome() {
+  renderLangDropdownBtn();
+  renderHomeTextList();
+}
+
+/** Update the language dropdown button label */
+function renderLangDropdownBtn() {
+  const lang  = LANGUAGES.find(l => l.code === state.currentLang);
+  const label = document.getElementById('lang-dropdown-label');
+  label.textContent = lang ? `${lang.flag} ${lang.name}` : 'Selecionar idioma';
+}
+
+/** Build and show the language dropdown panel */
+function renderLangDropdownPanel() {
+  const panel = document.getElementById('lang-dropdown-panel');
+  let html = '';
+
+  if (state.activeLangs.length) {
+    html += state.activeLangs.map(code => {
+      const lang  = LANGUAGES.find(l => l.code === code);
+      const count = Object.values(state.texts).filter(t => t.lang === code).length;
+      if (!lang) return '';
+      return `<div class="lang-dd-item ${state.currentLang === code ? 'active' : ''}"
+                   onclick="selectHomeLang('${code}')">
+                 <span class="flag">${lang.flag}</span>
+                 <span style="flex:1">${lang.name}</span>
+                 <span class="count">${count}</span>
+               </div>`;
+    }).join('');
+    html += '<div class="lang-dd-separator"></div>';
+  }
+
+  html += `<div class="lang-dd-add" onclick="closeLangDropdown(); openLangModal()">
+             <span style="font-size:14px">＋</span> Adicionar idioma
+           </div>`;
+
+  panel.innerHTML = html;
+}
+
+function selectHomeLang(code) {
+  state.currentLang = code;
+  closeLangDropdown();
+  save(); renderHome();
+}
+
+/* ── Language dropdown open/close ───────────────────────────────── */
+function toggleLangDropdown(event) {
+  event.stopPropagation();
+  const btn   = document.getElementById('lang-dropdown-btn');
+  const panel = document.getElementById('lang-dropdown-panel');
+  const open  = panel.classList.contains('open');
+  closeAllDropdowns();
+  if (!open) {
+    renderLangDropdownPanel();
+    // Position below the button
+    const rect = btn.getBoundingClientRect();
+    panel.style.top  = (rect.bottom + 6) + 'px';
+    panel.style.left = rect.left + 'px';
+    panel.classList.add('open');
+    btn.classList.add('open');
+  }
+}
+
+function closeLangDropdown() {
+  document.getElementById('lang-dropdown-panel').classList.remove('open');
+  document.getElementById('lang-dropdown-btn').classList.remove('open');
+}
+
+/* ── Settings panel open/close ──────────────────────────────────── */
+function toggleSettingsPanel(event) {
+  event.stopPropagation();
+  const btn   = document.getElementById('settings-btn');
+  const panel = document.getElementById('settings-panel');
+  const open  = panel.classList.contains('open');
+  closeAllDropdowns();
+  if (!open) {
+    const rect = btn.getBoundingClientRect();
+    panel.style.top   = (rect.bottom + 6) + 'px';
+    panel.style.right = (window.innerWidth - rect.right) + 'px';
+    panel.style.left  = 'auto';
+    panel.classList.add('open');
+  }
+}
+
+function closeSettingsPanel() {
+  document.getElementById('settings-panel').classList.remove('open');
+}
+
+function closeAllDropdowns() {
+  closeLangDropdown();
+  closeSettingsPanel();
+}
+
+// Close dropdowns on outside click
+document.addEventListener('click', () => closeAllDropdowns());
+
+function renderHomeTextList() {
+  const lang   = LANGUAGES.find(l => l.code === state.currentLang);
+  const addBtn = document.getElementById('add-text-btn');
+  const list   = document.getElementById('home-text-list');
+
+  if (!state.currentLang || !lang) {
+    addBtn.style.display = 'none';
+    list.innerHTML = '<div class="home-empty"><div class="icon">🌐</div><p>Selecione um idioma no menu acima.</p></div>';
+    return;
+  }
+
+  addBtn.style.display = '';
+
+  const texts = Object.values(state.texts)
+    .filter(t => t.lang === state.currentLang)
+    .sort((a,b) => b.createdAt - a.createdAt);
+
+  if (!texts.length) {
+    list.innerHTML = `<div class="home-empty"><div class="icon">📄</div><p>Nenhum texto em ${lang.name} ainda.<br>Clique em "Adicionar texto" para começar.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = texts.map(t => {
+    const wordCount = t.body.trim().split(/\s+/).length;
+    const annCount  = Object.keys(t.favorites || {}).filter(k => (state.globalMeanings[k] || []).length > 0).length;
+    return `
+      <div class="text-card" onclick="openText('${t.id}')">
+        <div style="flex:1">
+          <div class="text-card-title">${escHtml(t.title)}</div>
+          <div class="text-card-meta">${wordCount} palavras · ${annCount} anotações</div>
+        </div>
+        <div class="text-card-actions" onclick="event.stopPropagation()">
+          <button class="btn-icon" onclick="openEditModal('${t.id}')" title="Editar"><span class="mi">edit</span></button>
+          <button class="btn-icon danger" onclick="openDelModal('${t.id}')" title="Deletar"><span class="mi">delete</span></button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LANGUAGE MODAL  (add a language to the active list)
+   ═══════════════════════════════════════════════════════════════════ */
 function openLangModal() {
-  document.getElementById('lang-overlay').classList.add('open');
-  renderLangGrid();
-}
-function closeLangModal(e) {
-  if (e && e.target !== document.getElementById('lang-overlay')) return;
-  document.getElementById('lang-overlay').classList.remove('open');
-}
-
-function renderLangGrid() {
   const grid = document.getElementById('lang-grid');
   grid.innerHTML = LANGUAGES.map(l => `
-    <div class="lang-option ${state.currentLang === l.code ? 'selected' : ''}"
-         onclick="selectLang('${l.code}')">
-      <span class="flag">${l.flag}</span>
-      <span>${l.name}</span>
-    </div>
-  `).join('');
+    <div class="lang-option ${state.activeLangs.includes(l.code) ? 'selected' : ''}"
+         onclick="toggleActiveLang('${l.code}')">
+      <span class="flag">${l.flag}</span><span>${l.name}</span>
+    </div>`).join('');
+  document.getElementById('lang-overlay').classList.add('open');
 }
 
-function selectLang(code) {
-  state.currentLang = code;
-  save();
-  updateLangBtn();
-  renderLangGrid();
-  renderSidebar();
-  // Open first text of this language if any
-  const texts = getTextsForLang(code);
-  if (texts.length) openText(texts[0].id);
-  else { state.currentTextId = null; showEmpty(true); }
-  closeLangModal();
-}
+function closeLangModal() { document.getElementById('lang-overlay').classList.remove('open'); }
 
-function updateLangBtn() {
-  const lang = LANGUAGES.find(l => l.code === state.currentLang);
-  document.getElementById('lang-flag').textContent = lang ? lang.flag : '🌐';
-  document.getElementById('lang-name').textContent = lang ? lang.name : 'Selecionar idioma';
-}
-
-function getTextsForLang(code) {
-  return Object.values(state.texts)
-    .filter(t => t.lang === code)
-    .sort((a,b) => b.createdAt - a.createdAt);
-}
-
-// ── Sidebar ───────────────────────────────────────────────────────────
-function renderSidebar() {
-  const list = document.getElementById('text-list');
-  if (!state.currentLang) {
-    list.innerHTML = '<div style="padding:16px 14px; font-size:13px; color:var(--text-3);">Selecione um idioma primeiro.</div>';
-    return;
+function toggleActiveLang(code) {
+  if (state.activeLangs.includes(code)) {
+    // Only remove if no texts use it
+    const inUse = Object.values(state.texts).some(t => t.lang === code);
+    if (inUse) { alert('Remova todos os textos deste idioma antes de removê-lo.'); return; }
+    state.activeLangs = state.activeLangs.filter(c => c !== code);
+    if (state.currentLang === code) state.currentLang = state.activeLangs[0] || null;
+  } else {
+    state.activeLangs.push(code);
+    if (!state.currentLang) state.currentLang = code;
   }
-  const texts = getTextsForLang(state.currentLang);
-  if (!texts.length) {
-    list.innerHTML = '<div style="padding:16px 14px; font-size:13px; color:var(--text-3);">Nenhum texto ainda. Adicione um abaixo.</div>';
-    return;
-  }
-  list.innerHTML = texts.map(t => `
-    <div class="text-item ${state.currentTextId === t.id ? 'active' : ''}"
-         onclick="openText('${t.id}')">
-      <span class="item-title">${escHtml(t.title)}</span>
-      <div class="text-item-actions" onclick="event.stopPropagation()">
-        <button class="icon-btn" onclick="openEditModal('${t.id}')" title="Editar">✎</button>
-        <button class="icon-btn danger" onclick="openDelModal('${t.id}')" title="Deletar">✕</button>
-      </div>
-    </div>
-  `).join('');
+  save(); renderHome(); openLangModal(); // re-render grid and dropdown
 }
 
-// ── Add / Edit Text Modal ─────────────────────────────────────────────
-let editingTextId = null;
+/* ═══════════════════════════════════════════════════════════════════
+   ADD / EDIT TEXT MODAL
+   Language <select> lets user move a text to a different language.
+   ═══════════════════════════════════════════════════════════════════ */
+let editingTextId    = null;
+let detectDebounce   = null;
+let detectedInModal  = null; // detected lang code in the modal
+
+function populateLangSelect() {
+  document.getElementById('text-lang-select').innerHTML =
+    LANGUAGES.map(l => `<option value="${l.code}">${l.flag} ${l.name}</option>`).join('');
+}
 
 function openAddModal() {
-  if (!state.currentLang) { openLangModal(); return; }
   editingTextId = null;
   document.getElementById('text-modal-title').textContent = 'Adicionar texto';
   document.getElementById('text-title-input').value = '';
-  document.getElementById('text-body-input').value = '';
+  document.getElementById('text-body-input').value  = '';
+  document.getElementById('text-lang-select').value = state.currentLang || 'en';
+  document.getElementById('modal-detect-warn').style.display = 'none';
+  detectedInModal = null;
   document.getElementById('text-overlay').classList.add('open');
   setTimeout(() => document.getElementById('text-title-input').focus(), 80);
 }
@@ -661,150 +1175,227 @@ function openEditModal(id) {
   const t = state.texts[id];
   document.getElementById('text-modal-title').textContent = 'Editar texto';
   document.getElementById('text-title-input').value = t.title;
-  document.getElementById('text-body-input').value = t.body;
+  document.getElementById('text-body-input').value  = t.body;
+  document.getElementById('text-lang-select').value = t.lang;
+  document.getElementById('modal-detect-warn').style.display = 'none';
+  detectedInModal = null;
   document.getElementById('text-overlay').classList.add('open');
   setTimeout(() => document.getElementById('text-title-input').focus(), 80);
 }
 
-function closeTextModal(e) {
-  if (e && e.target !== document.getElementById('text-overlay')) return;
+function closeTextModal() {
   document.getElementById('text-overlay').classList.remove('open');
+  clearTimeout(detectDebounce);
+}
+
+/**
+ * Debounced language detection as user types in the text area.
+ * Warns if detected language differs from the selected one.
+ */
+function scheduleDetect() {
+  clearTimeout(detectDebounce);
+  detectDebounce = setTimeout(() => {
+    const body     = document.getElementById('text-body-input').value;
+    const selected = document.getElementById('text-lang-select').value;
+    const detected = detectLanguage(body);
+    const warn     = document.getElementById('modal-detect-warn');
+    detectedInModal = null;
+
+    if (detected && detected.code !== selected) {
+      const detectedLang = LANGUAGES.find(l => l.code === detected.code);
+      const selectedLang = LANGUAGES.find(l => l.code === selected);
+      detectedInModal = detected.code;
+      warn.style.display = '';
+      warn.innerHTML = `
+        <strong>${detectedLang.flag} ${detectedLang.name} detectado.</strong>
+        O idioma selecionado é ${selectedLang.flag} ${selectedLang.name}.
+        <button class="btn btn-sm btn-ghost" style="margin-left:8px;"
+                onclick="applyModalDetect()">Mudar para ${detectedLang.name}</button>`;
+    } else {
+      warn.style.display = 'none';
+    }
+  }, 600);
+}
+
+function applyModalDetect() {
+  if (detectedInModal) {
+    document.getElementById('text-lang-select').value = detectedInModal;
+    // Add language to active list if not present
+    if (!state.activeLangs.includes(detectedInModal)) {
+      state.activeLangs.push(detectedInModal);
+      save();
+    }
+    document.getElementById('modal-detect-warn').style.display = 'none';
+    detectedInModal = null;
+  }
 }
 
 function saveText() {
   const title = document.getElementById('text-title-input').value.trim();
   const body  = document.getElementById('text-body-input').value.trim();
+  const lang  = document.getElementById('text-lang-select').value;
   if (!title || !body) return;
 
+  // Ensure language is in active list
+  if (!state.activeLangs.includes(lang)) state.activeLangs.push(lang);
+
   if (editingTextId) {
-    state.texts[editingTextId].title = title;
-    state.texts[editingTextId].body  = body;
+    Object.assign(state.texts[editingTextId], { title, body, lang });
   } else {
     const id = 'txt_' + Date.now();
-    state.texts[id] = { id, lang: state.currentLang, title, body, meanings: {}, createdAt: Date.now() };
-    state.currentTextId = id;
+    state.texts[id] = { id, lang, title, body, favorites: {}, createdAt: Date.now() };
   }
-  save();
-  renderSidebar();
-  if (editingTextId) {
-    openText(editingTextId);
-  } else {
-    openText(state.currentTextId);
-  }
-  document.getElementById('text-overlay').classList.remove('open');
+
+  // If language changed, update currentLang to match
+  state.currentLang = lang;
+  save(); renderHome(); closeTextModal();
 }
 
-async function pasteFromClipboard() {
+async function pasteClipboard() {
   try {
     const text = await navigator.clipboard.readText();
     document.getElementById('text-body-input').value = text;
-    document.getElementById('text-body-input').focus();
-  } catch(e) {
-    alert('Permissão de área de transferência negada. Cole manualmente com Ctrl+V.');
-  }
+    scheduleDetect();
+  } catch { alert('Permissão negada. Cole manualmente com Ctrl+V / Cmd+V.'); }
 }
 
-// ── Delete ────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════
+   DELETE MODAL
+   ═══════════════════════════════════════════════════════════════════ */
 let deletingId = null;
-
-function openDelModal(id) {
-  deletingId = id;
-  document.getElementById('del-overlay').classList.add('open');
-}
-function closeDelModal(e) {
-  if (e && e.target !== document.getElementById('del-overlay')) return;
-  document.getElementById('del-overlay').classList.remove('open');
-}
+function openDelModal(id)  { deletingId = id; document.getElementById('del-overlay').classList.add('open'); }
+function closeDelModal()   { document.getElementById('del-overlay').classList.remove('open'); }
 function confirmDelete() {
   if (!deletingId) return;
   delete state.texts[deletingId];
-  if (state.currentTextId === deletingId) {
-    state.currentTextId = null;
-    showEmpty(true);
-    setTopbarTitle(null);
-    hideControls();
-  }
-  deletingId = null;
-  save();
-  renderSidebar();
-  document.getElementById('del-overlay').classList.remove('open');
+  if (state.currentTextId === deletingId) state.currentTextId = null;
+  deletingId = null; save(); renderHome(); closeDelModal();
 }
 
-// ── Reader ────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════
+   READER VIEW — open text, render, progress
+   ═══════════════════════════════════════════════════════════════════ */
 function openText(id) {
   if (!state.texts[id]) return;
   state.currentTextId = id;
-  save();
-  renderSidebar();
-  renderText(id);
-  showEmpty(false);
-  setTopbarTitle(state.texts[id].title);
-  showControls();
-  updateProgress();
-}
-
-function setTopbarTitle(t) {
-  const el = document.getElementById('topbar-title');
-  if (t) { el.textContent = t; el.classList.remove('empty'); }
-  else    { el.textContent = 'Nenhum texto selecionado'; el.classList.add('empty'); }
-}
-
-function showEmpty(yes) {
-  document.getElementById('empty-state').style.display = yes ? 'block' : 'none';
-  document.getElementById('text-content').style.display = yes ? 'none' : '';
-}
-
-function showControls() {
-  document.getElementById('reader-mode-toggle').style.display = 'flex';
-  document.getElementById('sentence-mode-toggle').style.display = 'flex';
-  document.getElementById('divider1').style.display = 'block';
-}
-function hideControls() {
-  document.getElementById('reader-mode-toggle').style.display = 'none';
-  document.getElementById('sentence-mode-toggle').style.display = 'none';
-  document.getElementById('divider1').style.display = 'none';
-}
-
-// Tokenize body into word tokens, preserving whitespace/punctuation
-function tokenizeBody(body) {
-  // Split on word boundaries but keep delimiters
-  return body.split(/(\s+|[。、！？,.!?;:""''()\[\]{}<>\/\\—–\-\n])/);
-}
-
-function isWord(token) {
-  return token && /\S/.test(token) && /[^\s。、！？,.!?;:""''()\[\]{}<>\/\\—–\-]/.test(token);
-}
-
-function renderText(id) {
   const t = state.texts[id];
-  const container = document.getElementById('text-content');
-  const tokens = tokenizeBody(t.body);
-  state.sentences = splitSentences(t.body);
-  state.currentSentence = 0;
+  state.currentLang = t.lang;
+  save();
 
-  container.innerHTML = tokens.map((token, i) => {
-    if (!token) return '';
-    if (!isWord(token)) {
-      // preserve newlines
-      if (token.includes('\n')) return token.split('\n').map(() => '').join('<br>');
-      return escHtml(token);
-    }
-    const key = token.toLowerCase();
-    const meaning = t.meanings[key];
-    const highlighted = meaning ? 'highlighted' : '';
-    return `<span class="word ${highlighted}" data-word="${escAttr(token)}" data-key="${escAttr(key)}" onclick="wordClick(this, event)">${escHtml(token)}</span>`;
+  document.getElementById('reader-title').textContent = t.title;
+  document.getElementById('toggle-reader-mode').className =
+    'toggle' + (state.readerMode ? ' on' : '');
+
+  // Render text
+  renderReaderContent(id);
+
+  // Run language detection on the loaded text
+  runReaderLangDetect(t);
+
+  showView('view-reader');
+  document.getElementById('reader-scroll').scrollTop = 0;
+  updateReaderProgress();
+}
+
+function closeReader() {
+  dismissLangToast();
+  closePopover();
+  showView('view-home');
+  renderHome(); // refresh word/annotation counts
+}
+
+function updateReaderProgress() {
+  const el  = document.getElementById('reader-scroll');
+  const max = el.scrollHeight - el.clientHeight;
+  document.getElementById('reader-progress-bar').style.width =
+    max > 0 ? (el.scrollTop / max) * 100 + '%' : '0%';
+}
+
+/* ── Language detect in reader (non-blocking toast) ─────────────── */
+function runReaderLangDetect(t) {
+  const detected = detectLanguage(t.body);
+  if (!detected || detected.code === t.lang) { dismissLangToast(); return; }
+
+  const detLang = LANGUAGES.find(l => l.code === detected.code);
+  const curLang = LANGUAGES.find(l => l.code === t.lang);
+  state.detectedLang = detected.code;
+
+  document.getElementById('lang-detect-msg').innerHTML =
+    `Texto parece ser <strong>${detLang.flag} ${detLang.name}</strong>, mas está em ${curLang.flag} ${curLang.name}.`;
+  document.getElementById('lang-detect-toast').classList.add('visible');
+}
+
+function applyDetectedLang() {
+  if (!state.detectedLang || !state.currentTextId) return;
+  const lang = state.detectedLang;
+  state.texts[state.currentTextId].lang = lang;
+  if (!state.activeLangs.includes(lang)) state.activeLangs.push(lang);
+  state.currentLang = lang;
+  save(); renderHome(); dismissLangToast();
+}
+
+function dismissLangToast() {
+  document.getElementById('lang-detect-toast').classList.remove('visible');
+  state.detectedLang = null;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TOKENIZER
+   Preserves hyphenated words (e.g. "по-русски") as a single unit.
+   Uses Unicode property escapes for correct multilingual handling.
+   ═══════════════════════════════════════════════════════════════════ */
+function tokenize(text) {
+  return text.match(/[\p{L}\p{N}]+-[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*|[\p{L}\p{N}]+|[^\p{L}\p{N}]/gu) || [];
+}
+function isWordTok(t) { return /[\p{L}\p{N}]/u.test(t); }
+
+function buildWordSpan(word) {
+  const key = word.toLowerCase();
+  const has = (state.globalMeanings[key] || []).length > 0;
+  const cls = has ? 'word highlighted' : 'word';
+  return `<span class="${cls}" data-word="${escAttr(word)}" data-key="${escAttr(key)}" onclick="wordClick(this,event)">${escHtml(word)}</span>`;
+}
+
+function renderReaderContent(id) {
+  const t      = state.texts[id];
+  const tokens = tokenize(t.body);
+  const html   = tokens.map(tok => {
+    if (!isWordTok(tok)) return tok === '\n' ? '<br>' : escHtml(tok);
+    return buildWordSpan(tok);
   }).join('');
-
+  document.getElementById('reader-content').innerHTML = html;
   applyReaderMode();
 }
 
-function splitSentences(body) {
-  // Split on sentence-ending punctuation
-  const raw = body.split(/(?<=[.!?。！？])\s+/);
-  return raw.filter(s => s.trim().length > 0);
+/* ═══════════════════════════════════════════════════════════════════
+   READER MODE  (furigana — show saved meaning above word)
+   ═══════════════════════════════════════════════════════════════════ */
+function toggleReaderMode() {
+  state.readerMode = !state.readerMode;
+  document.getElementById('toggle-reader-mode').classList.toggle('on', state.readerMode);
+  applyReaderMode();
 }
 
-// ── Word click & popover ──────────────────────────────────────────────
+function applyReaderMode() {
+  if (!state.currentTextId) return;
+  const t = state.texts[state.currentTextId];
+  document.querySelectorAll('.word').forEach(el => {
+    const key      = el.dataset.key;
+    const meanings = state.globalMeanings[key] || [];
+    // Reset to plain word
+    el.innerHTML = escHtml(el.dataset.word);
+    // Wrap with ruby if mode is on and at least one meaning exists
+    if (state.readerMode && meanings.length > 0) {
+      const favIdx = t.favorites[key] ?? 0;
+      const label  = meanings[Math.min(favIdx, meanings.length - 1)];
+      el.innerHTML = `<span class="word-wrap"><span class="word-ruby">${escHtml(label)}</span>${escHtml(el.dataset.word)}</span>`;
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   WORD POPOVER  — multiple meanings
+   ═══════════════════════════════════════════════════════════════════ */
 let activeWordEl = null;
 
 function wordClick(el, event) {
@@ -816,228 +1407,343 @@ function wordClick(el, event) {
   showPopover(el);
 }
 
-function showPopover(el) {
-  const t = state.texts[state.currentTextId];
-  const word = el.dataset.word;
-  const key  = el.dataset.key;
-  const meaning = t.meanings[key] || '';
-  const pop = document.getElementById('word-popover');
+/** Render the meanings list inside the popover for the given word key */
+function renderPopoverMeanings(key) {
+  const t        = state.texts[state.currentTextId];
+  const meanings = state.globalMeanings[key] || [];
+  const favIdx   = t.favorites[key] ?? 0;
+  const list     = document.getElementById('pop-meanings-list');
 
-  document.getElementById('pop-word-text').textContent = word;
-  const disp = document.getElementById('pop-meaning-display');
-  const removeBtn = document.getElementById('pop-remove');
-  if (meaning) {
-    disp.textContent = meaning;
-    disp.classList.remove('empty');
-    removeBtn.classList.add('visible');
-  } else {
-    disp.textContent = 'Sem significado';
-    disp.classList.add('empty');
-    removeBtn.classList.remove('visible');
+  if (!meanings.length) {
+    list.innerHTML = '<div class="pop-empty">Sem significados ainda.</div>';
+    return;
   }
 
-  const input = document.getElementById('pop-input');
-  input.value = meaning;
-  input.placeholder = meaning ? 'Editar significado…' : 'Adicionar significado…';
+  list.innerHTML = meanings.map((val, i) => {
+    const isFav = i === Math.min(favIdx, meanings.length - 1);
+    return `
+      <div class="pop-meaning-item ${isFav ? 'fav' : ''}"
+           onclick="setFavorite('${escAttr(key)}', ${i})">
+        <span class="fav-icon">check</span>
+        <span class="pop-meaning-text">${escHtml(val)}</span>
+        <button class="pop-del-btn" onclick="deleteMeaning(event,'${escAttr(key)}',${i})"
+                title="Remover">delete</button>
+      </div>`;
+  }).join('');
+}
 
+function showPopover(el) {
+  const key = el.dataset.key;
+  document.getElementById('pop-word-text').textContent = el.dataset.word;
+  document.getElementById('pop-input').value = '';
+
+  renderPopoverMeanings(key);
+
+  const pop = document.getElementById('word-popover');
   pop.classList.add('open');
   positionPopover(el);
-  setTimeout(() => input.focus(), 60);
+  setTimeout(() => document.getElementById('pop-input').focus(), 60);
 }
 
 function positionPopover(el) {
-  const pop = document.getElementById('word-popover');
+  const pop  = document.getElementById('word-popover');
   const rect = el.getBoundingClientRect();
-  const pw = 240, ph = 160;
+  const pw = 280;
   const vw = window.innerWidth, vh = window.innerHeight;
-
+  // Estimate height based on meaning count
+  const key  = el.dataset.key;
+  const cnt  = (state.globalMeanings[key] || []).length;
+  const ph   = 80 + Math.min(cnt, 5) * 38;
   let top  = rect.bottom + 8;
   let left = rect.left;
-
   if (left + pw > vw - 12) left = vw - pw - 12;
-  if (left < 12) left = 12;
-  if (top + ph > vh - 12) top = rect.top - ph - 8;
-
-  pop.style.top  = top  + 'px';
+  if (left < 12)           left = 12;
+  if (top  + ph > vh - 12) top  = rect.top - ph - 8;
+  if (top < 8) top = 8;
+  pop.style.top  = top + 'px';
   pop.style.left = left + 'px';
 }
 
 function closePopover() {
   document.getElementById('word-popover').classList.remove('open');
+  document.getElementById('pop-input').value = '';
   if (activeWordEl) { activeWordEl.classList.remove('selected'); activeWordEl = null; }
 }
 
-document.addEventListener('click', (e) => {
+document.addEventListener('click', e => {
   if (!document.getElementById('word-popover').contains(e.target)) closePopover();
 });
 
-// Save meaning on Enter
-document.getElementById('pop-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') { e.preventDefault(); saveMeaning(); }
+document.getElementById('pop-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); addMeaning(); }
 });
 
-function saveMeaning() {
+/** Add a new meaning to globalMeanings for the active word */
+function addMeaning() {
   if (!activeWordEl || !state.currentTextId) return;
   const key = activeWordEl.dataset.key;
   const val = document.getElementById('pop-input').value.trim();
-  const t = state.texts[state.currentTextId];
+  if (!val) return;
 
-  if (val) {
-    t.meanings[key] = val;
-    // Highlight all matching words
-    document.querySelectorAll(`.word[data-key="${CSS.escape(key)}"]`).forEach(w => {
-      w.classList.add('highlighted');
-    });
-  } else {
-    delete t.meanings[key];
-    document.querySelectorAll(`.word[data-key="${CSS.escape(key)}"]`).forEach(w => {
-      w.classList.remove('highlighted');
-    });
+  if (!state.globalMeanings[key]) state.globalMeanings[key] = [];
+
+  // Don't add duplicates
+  if (!state.globalMeanings[key].includes(val)) {
+    state.globalMeanings[key].push(val);
   }
-  save();
-  applyReaderMode(); // refresh furigana if on
-  closePopover();
-}
 
-function clearMeaning() {
-  if (!activeWordEl || !state.currentTextId) return;
-  const key = activeWordEl.dataset.key;
+  // If this is the first meaning, auto-set as favorite (idx 0)
   const t = state.texts[state.currentTextId];
-  delete t.meanings[key];
-  document.querySelectorAll(`.word[data-key="${CSS.escape(key)}"]`).forEach(w => {
-    w.classList.remove('highlighted');
-  });
+  if (!(key in t.favorites)) t.favorites[key] = 0;
+
+  document.getElementById('pop-input').value = '';
+
+  // Update highlight on all matching word spans
+  syncWordHighlight(key);
+  renderPopoverMeanings(key);
+  positionPopover(activeWordEl);
   save();
   applyReaderMode();
-  closePopover();
 }
 
-// ── Reader Mode (furigana) ────────────────────────────────────────────
-function toggleReaderMode() {
-  state.readerMode = !state.readerMode;
-  document.getElementById('toggle-reader').classList.toggle('on', state.readerMode);
-  applyReaderMode();
-}
-
-function applyReaderMode() {
+/** Set a meaning as favorite for the current text */
+function setFavorite(key, idx) {
   if (!state.currentTextId) return;
   const t = state.texts[state.currentTextId];
-  document.querySelectorAll('.word').forEach(el => {
-    const key = el.dataset.key;
-    const meaning = t.meanings[key];
+  t.favorites[key] = idx;
+  renderPopoverMeanings(key);
+  save();
+  applyReaderMode();
+}
 
-    // Always restore to plain text first
-    el.innerHTML = escHtml(el.dataset.word);
+/** Delete a meaning from globalMeanings; adjust favorites across all texts */
+function deleteMeaning(event, key, idx) {
+  event.stopPropagation(); // don't trigger setFavorite on the row
+  const meanings = state.globalMeanings[key];
+  if (!meanings) return;
 
-    // Then add ruby on top if mode is on and there's a meaning
-    if (state.readerMode && meaning) {
-      el.innerHTML = `<span class="word-wrap"><span class="word-ruby">${escHtml(meaning)}</span>${escHtml(el.dataset.word)}</span>`;
-    }
+  meanings.splice(idx, 1);
+
+  if (meanings.length === 0) {
+    // No meanings left — remove key entirely, clear favorites everywhere
+    delete state.globalMeanings[key];
+    Object.values(state.texts).forEach(t => { delete t.favorites[key]; });
+    syncWordHighlight(key);
+    closePopover();
+  } else {
+    // Adjust per-text favorites: if fav pointed at or past deleted idx, clamp to 0
+    Object.values(state.texts).forEach(t => {
+      if (t.favorites[key] !== undefined) {
+        if (t.favorites[key] >= idx) t.favorites[key] = 0;
+      }
+    });
+    renderPopoverMeanings(key);
+    positionPopover(activeWordEl);
+  }
+
+  save();
+  applyReaderMode();
+}
+
+/** Sync the .highlighted class on all spans for a given word key */
+function syncWordHighlight(key) {
+  const has = (state.globalMeanings[key] || []).length > 0;
+  document.querySelectorAll(`.word[data-key="${CSS.escape(key)}"]`).forEach(w => {
+    w.classList.toggle('highlighted', has);
   });
 }
 
-// ── Sentence Mode (integral) ──────────────────────────────────────────
-function toggleSentenceMode() {
-  state.sentenceMode = !state.sentenceMode;
-  document.getElementById('toggle-sentence').classList.toggle('on', state.sentenceMode);
-  if (state.sentenceMode) {
-    state.currentSentence = 0;
-    renderSentenceView();
-  } else {
-    renderText(state.currentTextId);
-    updateProgress();
-  }
+/* ═══════════════════════════════════════════════════════════════════
+   SENTENCE MODE
+
+   Navigation:
+     • Click on slider track → jump to sentence at that %
+     • Drag slider thumb → scrub (mousedown+mousemove, touch)
+     • Swipe left/right on sentence text area
+     • ← → keyboard keys
+     • Prev/Next buttons
+   ═══════════════════════════════════════════════════════════════════ */
+function splitSentences(body) {
+  return body.split(/(?<=[.!?。！？])\s+/).filter(s => s.trim().length);
 }
 
-function renderSentenceView() {
-  const sentences = state.sentences;
-  const idx = state.currentSentence;
-  if (!sentences.length) return;
+function enterSentenceMode() {
+  state.sentences      = splitSentences(state.texts[state.currentTextId].body);
+  state.currentSentence = 0;
+  document.getElementById('sentence-title').textContent = state.texts[state.currentTextId].title;
+  showView('view-sentence');
+  renderSentence();
+}
 
-  const total = sentences.length;
+function exitSentenceMode() {
+  closePopover();
+  showView('view-reader');
+}
+
+/** Render the current sentence into the sentence view */
+function renderSentence() {
+  const { sentences, currentSentence: idx } = state;
+  const total    = sentences.length;
   const sentence = sentences[Math.min(idx, total - 1)];
-  const t = state.texts[state.currentTextId];
+  const t        = state.texts[state.currentTextId];
 
-  // Tokenize the sentence exactly like the full reader
-  const tokens = tokenizeBody(sentence);
-  const tokenizedHtml = tokens.map(token => {
-    if (!token) return '';
-    if (!isWord(token)) {
-      if (token.includes('\n')) return '<br>';
-      return escHtml(token);
-    }
-    const key = token.toLowerCase();
-    const meaning = t.meanings[key];
-    const highlighted = meaning ? 'highlighted' : '';
-    return `<span class="word ${highlighted}" data-word="${escAttr(token)}" data-key="${escAttr(key)}" onclick="wordClick(this, event)">${escHtml(token)}</span>`;
+  // Tokenize sentence same as full reader
+  const html = tokenize(sentence).map(tok => {
+    if (!isWordTok(tok)) return tok === '\n' ? '<br>' : escHtml(tok);
+    return buildWordSpan(tok);
   }).join('');
 
-  const container = document.getElementById('text-content');
-  container.innerHTML = `
-    <div class="sentence-view">
-      <div class="sentence-counter">${idx + 1} <span>/ ${total}</span></div>
-      <div class="sentence-text">${tokenizedHtml}</div>
-      <div class="sentence-nav">
-        <button class="btn btn-ghost btn-sm" onclick="goPrevSentence()" ${idx === 0 ? 'disabled' : ''}>← Anterior</button>
-        <button class="btn btn-ghost btn-sm" onclick="goNextSentence()" ${idx >= total - 1 ? 'disabled' : ''}>Próxima →</button>
-      </div>
-    </div>
-  `;
-
-  // Apply reader mode (furigana) if active
+  document.getElementById('sentence-text').innerHTML = html;
   applyReaderMode();
 
-  // Update progress
+  // Update slider position
   const pct = total > 1 ? (idx / (total - 1)) * 100 : 100;
-  document.getElementById('progress-bar').style.width = pct + '%';
+  document.getElementById('sentence-slider-fill').style.width = pct + '%';
+  document.getElementById('sentence-slider-thumb').style.left = pct + '%';
+
+  // Update both counter displays
+  const label = `${idx + 1} / ${total}`;
+  document.getElementById('sentence-counter-label').textContent  = label;
+  document.getElementById('sentence-counter-inline').textContent = label;
+
+  const isLast = idx >= total - 1;
+
+  // Prev/Next buttons
+  document.getElementById('sent-prev').disabled = idx === 0;
+  document.getElementById('sent-next').disabled = isLast;
+
+  // Show finish panel only on last sentence; hide nav buttons
+  document.getElementById('sentence-nav').style.display          = isLast ? 'none' : 'flex';
+  document.getElementById('sentence-finish-panel').classList.toggle('visible', isLast);
 }
 
-function goNextSentence() {
-  if (state.currentSentence < state.sentences.length - 1) {
-    state.currentSentence++;
-    renderSentenceView();
+function goPrev() {
+  if (state.currentSentence > 0) { state.currentSentence--; renderSentence(); }
+}
+function goNext() {
+  if (state.currentSentence < state.sentences.length - 1) { state.currentSentence++; renderSentence(); }
+}
+
+/** Jump to sentence at a given 0–1 ratio */
+function jumpToRatio(ratio) {
+  const total = state.sentences.length;
+  state.currentSentence = Math.round(Math.max(0, Math.min(1, ratio)) * (total - 1));
+  renderSentence();
+}
+
+/** Compute ratio from a pointer/mouse X position on the track element */
+function ratioFromEvent(trackEl, clientX) {
+  const rect = trackEl.getBoundingClientRect();
+  return (clientX - rect.left) / rect.width;
+}
+
+/* ── Slider: click ────────────────────────────────────────────── */
+function sliderClick(event) {
+  // Ignore if this was a drag (handled by mouseup)
+  if (sliderDragging) return;
+  jumpToRatio(ratioFromEvent(event.currentTarget, event.clientX));
+}
+
+/* ── Slider: mouse drag ───────────────────────────────────────── */
+let sliderDragging = false;
+
+function sliderMouseDown(event) {
+  sliderDragging = false; // reset; we'll flag true only on move
+  const track = event.currentTarget;
+  const onMove = e => {
+    sliderDragging = true;
+    jumpToRatio(ratioFromEvent(track, e.clientX));
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    // Small delay so sliderClick sees the flag
+    setTimeout(() => { sliderDragging = false; }, 50);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+/* ── Slider: touch (drag + swipe on sentence text) ───────────── */
+let touchStartX  = null;
+let touchStartIdx = null;
+
+function sliderTouchStart(event) {
+  touchStartX   = event.touches[0].clientX;
+  touchStartIdx = state.currentSentence;
+}
+function sliderTouchMove(event) {
+  event.preventDefault();
+  const track = event.currentTarget;
+  jumpToRatio(ratioFromEvent(track, event.touches[0].clientX));
+}
+function sliderTouchEnd() { touchStartX = null; }
+
+/* ── Swipe on sentence text area ─────────────────────────────── */
+let swipeStartX = null;
+const sentScroll = document.getElementById('sentence-scroll');
+
+sentScroll.addEventListener('touchstart', e => {
+  swipeStartX = e.touches[0].clientX;
+}, { passive: true });
+
+sentScroll.addEventListener('touchend', e => {
+  if (swipeStartX === null) return;
+  const dx = swipeStartX - e.changedTouches[0].clientX;
+  // Only register as swipe if horizontal movement > 40px
+  if (Math.abs(dx) > 40) {
+    dx > 0 ? goNext() : goPrev();
   }
-}
-function goPrevSentence() {
-  if (state.currentSentence > 0) {
-    state.currentSentence--;
-    renderSentenceView();
-  }
-}
-
-// ── Progress ──────────────────────────────────────────────────────────
-function updateProgress() {
-  const area = document.getElementById('reader-area');
-  const max = area.scrollHeight - area.clientHeight;
-  const pct = max > 0 ? (area.scrollTop / max) * 100 : 0;
-  document.getElementById('progress-bar').style.width = pct + '%';
-}
-
-// ── Mobile sidebar ────────────────────────────────────────────────────
-function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
-}
-document.getElementById('reader-area').addEventListener('click', () => {
-  document.getElementById('sidebar').classList.remove('open');
+  swipeStartX = null;
 });
 
-// ── Keyboard shortcuts ────────────────────────────────────────────────
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { closePopover(); closeTextModal(); closeLangModal(); }
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-  if (e.key === 'ArrowRight' && state.sentenceMode) goNextSentence();
-  if (e.key === 'ArrowLeft'  && state.sentenceMode) goPrevSentence();
+/* ── Finish options ───────────────────────────────────────────── */
+function finishClose() {
+  // End session → go back to home
+  closePopover();
+  showView('view-home');
+  renderHome();
+}
+
+function finishFullText() {
+  // Exit sentence mode → show full text from top
+  closePopover();
+  showView('view-reader');
+  document.getElementById('reader-scroll').scrollTop = 0;
+  updateReaderProgress();
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   KEYBOARD SHORTCUTS
+   ═══════════════════════════════════════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closePopover();
+    closeLangModal();
+    closeTextModal();
+    closeDelModal();
+  }
+  if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+  const inSentence = document.getElementById('view-sentence').classList.contains('active');
+  if (inSentence) {
+    if (e.key === 'ArrowRight') goNext();
+    if (e.key === 'ArrowLeft')  goPrev();
+  }
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════
+   UTILITIES
+   ═══════════════════════════════════════════════════════════════════ */
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function escAttr(s) {
-  return String(s).replace(/"/g,'&quot;');
+  return String(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-// ── Start ─────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════
+   START
+   ═══════════════════════════════════════════════════════════════════ */
 init();
 </script>
 </body>
