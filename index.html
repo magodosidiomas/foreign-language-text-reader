@@ -27,7 +27,7 @@
 -->
 
 <!-- Supabase JS SDK (CDN, no build step needed) -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
 
 <style>
 /* ═══════════════════════════════════════════════════════════════════
@@ -580,7 +580,20 @@ select.input option { background: var(--surface2); }
     </div>
     <div class="field" id="auth-pass-field">
       <label for="auth-password">Senha</label>
-      <input class="input" id="auth-password" type="password" placeholder="••••••••" autocomplete="current-password">
+      <div style="position:relative;">
+        <input class="input" id="auth-password" type="password" placeholder="••••••••"
+               autocomplete="current-password" style="padding-right:42px;">
+        <button type="button" onclick="togglePasswordVisibility()"
+                style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                       background:none;border:none;cursor:pointer;color:var(--text-3);
+                       display:inline-flex;align-items:center;padding:2px;
+                       transition:color var(--tr);"
+                onmouseover="this.style.color='var(--text-2)'"
+                onmouseout="this.style.color='var(--text-3)'"
+                title="Mostrar/ocultar senha">
+          <span class="mi" id="eye-icon" style="font-size:18px;">visibility</span>
+        </button>
+      </div>
     </div>
 
     <button class="btn btn-primary" id="auth-submit" onclick="handleAuth()" style="width:100%;margin-top:4px;">
@@ -786,8 +799,8 @@ select.input option { background: var(--surface2); }
    CONFIG — replace with your Supabase project values
    Dashboard → Project Settings → API
    ═══════════════════════════════════════════════════════════════════ */
-const SUPABASE_URL      = 'https://YOUR_PROJECT.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+const SUPABASE_URL      = 'https://jwhzhzptsgtwzevbqbku.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_0-wyyFwx7yu5CEsdnYpmlQ_dBr09JWW';
 
 /* ═══════════════════════════════════════════════════════════════════
    SUPABASE CLIENT
@@ -927,6 +940,14 @@ function showAuthInfo(msg) {
   el.classList.add('visible');
 }
 
+function togglePasswordVisibility() {
+  const input = document.getElementById('auth-password');
+  const icon  = document.getElementById('eye-icon');
+  const show  = input.type === 'password';
+  input.type  = show ? 'text' : 'password';
+  icon.textContent = show ? 'visibility_off' : 'visibility';
+}
+
 async function handleAuth() {
   const email    = document.getElementById('auth-email').value.trim();
   const password = document.getElementById('auth-password').value;
@@ -958,6 +979,7 @@ async function handleAuth() {
 }
 
 function translateAuthError(msg) {
+  if (!msg || msg === 'Failed to fetch') return 'Erro de conexão. Verifique sua internet ou tente novamente.';
   if (msg.includes('Invalid login')) return 'E-mail ou senha incorretos.';
   if (msg.includes('Email not confirmed')) return 'Confirme seu e-mail antes de entrar.';
   if (msg.includes('already registered')) return 'Este e-mail já está em uso.';
