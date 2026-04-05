@@ -647,9 +647,32 @@ select.input option { background: var(--surface2); }
       Esqueci minha senha
     </button>
 
-    <div class="auth-divider">ou</div>
+    <!-- Recovery: new password fields (hidden by default) -->
+    <div id="auth-newpass-fields" style="display:none;">
+      <div class="field">
+        <label for="auth-newpass">Nova senha</label>
+        <div style="position:relative;">
+          <input class="input" id="auth-newpass" type="password" placeholder="••••••••"
+                 autocomplete="new-password" style="padding-right:42px;">
+          <button type="button" onclick="toggleNewPassVisibility()"
+                  style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                         background:none;border:none;cursor:pointer;color:var(--text-3);
+                         display:inline-flex;align-items:center;padding:2px;transition:color var(--tr);"
+                  title="Mostrar/ocultar senha">
+            <span class="mi" id="eye-icon-new" style="font-size:18px;">visibility</span>
+          </button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="auth-newpass2">Confirmar nova senha</label>
+        <input class="input" id="auth-newpass2" type="password" placeholder="••••••••"
+               autocomplete="new-password">
+      </div>
+    </div>
 
-    <button class="btn btn-ghost" onclick="enterGuestMode()" style="width:100%;">
+    <div class="auth-divider" id="auth-divider-guest">ou</div>
+
+    <button class="btn btn-ghost" id="auth-guest-btn" onclick="enterGuestMode()" style="width:100%;">
       Continuar sem login
     </button>
   </div>
@@ -1322,6 +1345,14 @@ function showAuthInfo(msg) {
   el.textContent = msg; el.classList.add('visible');
 }
 
+function toggleNewPassVisibility() {
+  const input = document.getElementById('auth-newpass');
+  const icon  = document.getElementById('eye-icon-new');
+  const show  = input.type === 'password';
+  input.type   = show ? 'text' : 'password';
+  icon.textContent = show ? 'visibility_off' : 'visibility';
+}
+
 function togglePasswordVisibility() {
   const input = document.getElementById('auth-password');
   const icon  = document.getElementById('eye-icon');
@@ -1535,7 +1566,19 @@ function setSyncStatus(status) {
 async function init() {
   populateLangSelect();
 
-  // Check for existing Supabase session first
+  // ── Detect recovery / magic-link token in URL hash ──────────────
+  const hash = window.location.hash;
+  if (hash.includes('type=recovery') || hash.includes('type=magiclink')) {
+    // Let Supabase SDK parse the token from the hash
+    const { data: { session }, error } = await supa.auth.getSession();
+    if (session?.user) {
+      // Token valid — show the new password form
+      enterRecoveryMode();
+      return;
+    }
+  }
+
+  // ── Check for existing session ───────────────────────────────────
   const { data: { session } } = await supa.auth.getSession();
   if (session?.user) {
     supaUserId = session.user.id;
@@ -1548,7 +1591,7 @@ async function init() {
     return;
   }
 
-  // Check if user previously chose guest mode this session
+  // ── Guest mode ───────────────────────────────────────────────────
   if (sessionStorage.getItem('guestMode') === '1') {
     isGuest = true;
     await load();
@@ -1559,8 +1602,25 @@ async function init() {
     return;
   }
 
-  // Show auth screen
+  // ── Show auth screen ─────────────────────────────────────────────
   showView('view-auth');
+}
+
+/** Switch the auth card into "set new password" mode */
+function enterRecoveryMode() {
+  authMode = 'recovery';
+  showView('view-auth');
+  // Hide tabs, email, old password, forgot link, guest button
+  document.getElementById('auth-tabs').style.display         = 'none';
+  document.getElementById('auth-email').closest('.field').style.display = 'none';
+  document.getElementById('auth-pass-field').style.display   = 'none';
+  document.getElementById('forgot-link').style.display       = 'none';
+  document.getElementById('auth-divider-guest').style.display = 'none';
+  document.getElementById('auth-guest-btn').style.display    = 'none';
+  // Show new password fields
+  document.getElementById('auth-newpass-fields').style.display = '';
+  document.getElementById('auth-submit').textContent = 'Definir nova senha';
+  showAuthInfo('Digite e confirme sua nova senha.');
 }
 
 function updateAuthUI() {
