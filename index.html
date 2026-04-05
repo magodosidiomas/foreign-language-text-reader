@@ -647,7 +647,6 @@ select.input option { background: var(--surface2); }
       Esqueci minha senha
     </button>
 
-    <!-- Recovery: new password fields (hidden by default) -->
     <div id="auth-newpass-fields" style="display:none;">
       <div class="field">
         <label for="auth-newpass">Nova senha</label>
@@ -657,8 +656,7 @@ select.input option { background: var(--surface2); }
           <button type="button" onclick="toggleNewPassVisibility()"
                   style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
                          background:none;border:none;cursor:pointer;color:var(--text-3);
-                         display:inline-flex;align-items:center;padding:2px;transition:color var(--tr);"
-                  title="Mostrar/ocultar senha">
+                         display:inline-flex;align-items:center;padding:2px;">
             <span class="mi" id="eye-icon-new" style="font-size:18px;">visibility</span>
           </button>
         </div>
@@ -1370,6 +1368,19 @@ async function handleAuth() {
   btn.disabled = true;
   clearAuthMessages();
   try {
+    if (authMode === 'recovery') {
+      const newPass  = document.getElementById('auth-newpass').value;
+      const newPass2 = document.getElementById('auth-newpass2').value;
+      if (newPass.length < 6) { showAuthError('A senha deve ter pelo menos 6 caracteres.'); return; }
+      if (newPass !== newPass2) { showAuthError('As senhas não coincidem.'); return; }
+      const { error } = await supa.auth.updateUser({ password: newPass });
+      if (error) { showAuthError(translateAuthError(error.message)); return; }
+      history.replaceState(null, '', window.location.pathname);
+      showAuthInfo('Senha atualizada! Entrando…');
+      // onAuthStateChange SIGNED_IN will fire and navigate to home
+      return;
+    }
+
     if (authMode === 'forgot') {
       const { error } = await supa.auth.resetPasswordForEmail(email, { redirectTo: APP_URL });
       if (error) showAuthError(translateAuthError(error.message));
@@ -1566,19 +1577,28 @@ function setSyncStatus(status) {
 async function init() {
   populateLangSelect();
 
-  // ── Detect recovery / magic-link token in URL hash ──────────────
-  const hash = window.location.hash;
-  if (hash.includes('type=recovery') || hash.includes('type=magiclink')) {
-    // Let Supabase SDK parse the token from the hash
-    const { data: { session }, error } = await supa.auth.getSession();
-    if (session?.user) {
-      // Token valid — show the new password form
+  // onAuthStateChange handles recovery links and sign-in/out events
+  supa.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
       enterRecoveryMode();
       return;
     }
-  }
+    if (event === 'SIGNED_IN' && authMode !== 'recovery') {
+      supaUserId = session.user.id;
+      isGuest = false;
+      sessionStorage.removeItem('guestMode');
+      await loadFromSupabase();
+      updateAuthUI();
+      showView('view-home');
+      renderHome();
+      checkBackupReminder();
+    }
+    if (event === 'SIGNED_OUT') {
+      showView('view-auth');
+    }
+  });
 
-  // ── Check for existing session ───────────────────────────────────
+  // Check for existing session on load
   const { data: { session } } = await supa.auth.getSession();
   if (session?.user) {
     supaUserId = session.user.id;
@@ -1591,7 +1611,7 @@ async function init() {
     return;
   }
 
-  // ── Guest mode ───────────────────────────────────────────────────
+  // Guest mode
   if (sessionStorage.getItem('guestMode') === '1') {
     isGuest = true;
     await load();
@@ -1602,22 +1622,20 @@ async function init() {
     return;
   }
 
-  // ── Show auth screen ─────────────────────────────────────────────
   showView('view-auth');
 }
 
-/** Switch the auth card into "set new password" mode */
 function enterRecoveryMode() {
   authMode = 'recovery';
   showView('view-auth');
-  // Hide tabs, email, old password, forgot link, guest button
-  document.getElementById('auth-tabs').style.display         = 'none';
+  document.getElementById('auth-tabs').style.display          = 'none';
   document.getElementById('auth-email').closest('.field').style.display = 'none';
-  document.getElementById('auth-pass-field').style.display   = 'none';
-  document.getElementById('forgot-link').style.display       = 'none';
-  document.getElementById('auth-divider-guest').style.display = 'none';
-  document.getElementById('auth-guest-btn').style.display    = 'none';
-  // Show new password fields
+  document.getElementById('auth-pass-field').style.display    = 'none';
+  document.getElementById('forgot-link').style.display        = 'none';
+  const divider = document.getElementById('auth-divider-guest');
+  const guestBtn = document.getElementById('auth-guest-btn');
+  if (divider)  divider.style.display  = 'none';
+  if (guestBtn) guestBtn.style.display = 'none';
   document.getElementById('auth-newpass-fields').style.display = '';
   document.getElementById('auth-submit').textContent = 'Definir nova senha';
   showAuthInfo('Digite e confirme sua nova senha.');
