@@ -1048,7 +1048,13 @@ const SUPABASE_ANON_KEY = 'sb_publishable_0-wyyFwx7yu5CEsdnYpmlQ_dBr09JWW';
 const APP_URL           = 'https://magodosidiomas.github.io/foreign-language-text-reader/';
 
 const { createClient } = supabase;
-const supa = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supa = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    detectSessionInUrl: false, // we handle the hash manually in init()
+    autoRefreshToken:   true,
+    persistSession:     true,
+  }
+});
 
 /* Whether the user is logged in or using guest mode */
 let isGuest = false;
@@ -1577,12 +1583,25 @@ function setSyncStatus(status) {
 async function init() {
   populateLangSelect();
 
-  // onAuthStateChange handles recovery links and sign-in/out events
+  // ── Check URL hash for recovery token BEFORE anything else ───────
+  // Supabase sends: /app#access_token=...&type=recovery
+  // We must handle this before getSession(), otherwise the existing
+  // session check will navigate to home and skip the recovery screen.
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  if (hashParams.get('type') === 'recovery' && hashParams.get('access_token')) {
+    // Set the session from the hash tokens so updateUser() works later
+    await supa.auth.setSession({
+      access_token:  hashParams.get('access_token'),
+      refresh_token: hashParams.get('refresh_token') || '',
+    });
+    // Clean the hash from the URL without reloading
+    history.replaceState(null, '', window.location.pathname);
+    enterRecoveryMode();
+    return; // do NOT fall through to getSession()
+  }
+
+  // ── Listen for future auth events (sign-in / sign-out) ───────────
   supa.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'PASSWORD_RECOVERY') {
-      enterRecoveryMode();
-      return;
-    }
     if (event === 'SIGNED_IN' && authMode !== 'recovery') {
       supaUserId = session.user.id;
       isGuest = false;
@@ -1598,7 +1617,7 @@ async function init() {
     }
   });
 
-  // Check for existing session on load
+  // ── Check for existing session ────────────────────────────────────
   const { data: { session } } = await supa.auth.getSession();
   if (session?.user) {
     supaUserId = session.user.id;
@@ -1611,7 +1630,7 @@ async function init() {
     return;
   }
 
-  // Guest mode
+  // ── Guest mode ────────────────────────────────────────────────────
   if (sessionStorage.getItem('guestMode') === '1') {
     isGuest = true;
     await load();
