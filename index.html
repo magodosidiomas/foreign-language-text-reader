@@ -8,7 +8,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dexie/3.2.4/dexie.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
 
 <!--
   ╔══════════════════════════════════════════════════════════╗
@@ -26,6 +25,7 @@
   ║    • Sentence slider navigation (click + drag + swipe)   ║
   ║    • Finish options: close session / back to full text   ║
   ║    • Persistence via Dexie (IndexedDB) — survives deploys║
+  ║    • No backend — Supabase removed (see supabase-be.js)  ║
   ╚══════════════════════════════════════════════════════════╝
 -->
 
@@ -544,58 +544,6 @@ select.input option { background: var(--surface2); }
   .topbar { padding: 0 14px; }
 }
 
-/* ═══════════════════════════════════════════════════════════════════
-   VIEW: AUTH
-   ═══════════════════════════════════════════════════════════════════ */
-#view-auth { align-items: center; justify-content: center; }
-.auth-card {
-  background: var(--surface); border: 1px solid var(--border2);
-  border-radius: var(--radius-lg); padding: 32px;
-  width: min(400px, calc(100vw - 32px));
-  display: flex; flex-direction: column;
-}
-.auth-logo { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
-.auth-logo span { color: var(--accent); }
-.auth-tagline { font-size: 13px; color: var(--text-3); margin-bottom: 28px; }
-.auth-tabs {
-  display: flex; gap: 2px; margin-bottom: 24px;
-  background: var(--surface2); border-radius: var(--radius); padding: 3px;
-}
-.auth-tab {
-  flex: 1; padding: 7px 12px; border: none; border-radius: 6px;
-  font: inherit; font-size: 13px; font-weight: 500;
-  cursor: pointer; color: var(--text-3); background: none;
-  transition: background var(--tr), color var(--tr);
-}
-.auth-tab.active { background: var(--surface3); color: var(--text); }
-.auth-error {
-  font-size: 13px; color: var(--red); padding: 10px 12px;
-  background: rgba(224,91,91,.1); border: 1px solid rgba(224,91,91,.25);
-  border-radius: var(--radius); margin-bottom: 14px; display: none;
-}
-.auth-error.visible { display: block; }
-.auth-info {
-  font-size: 13px; color: var(--text-2); padding: 10px 12px;
-  background: var(--accent-bg); border: 1px solid rgba(91,141,238,.25);
-  border-radius: var(--radius); margin-bottom: 14px; display: none;
-}
-.auth-info.visible { display: block; }
-.auth-divider {
-  display: flex; align-items: center; gap: 10px;
-  margin: 16px 0; color: var(--text-3); font-size: 12px;
-}
-.auth-divider::before, .auth-divider::after {
-  content: ''; flex: 1; height: 1px; background: var(--border);
-}
-/* sync status */
-#sync-status {
-  display: flex; align-items: center; gap: 5px;
-  font-size: 11px; color: var(--text-3); padding: 4px 8px;
-  border-radius: 99px; transition: color var(--tr);
-}
-#sync-status .mi { font-size: 14px; }
-#sync-status.syncing { color: var(--accent); }
-#sync-status.error   { color: var(--red); }
 .settings-sep { height: 1px; background: var(--border); margin: 4px 0; }
 .settings-item.danger:hover { color: var(--red); }
 </style>
@@ -603,83 +551,9 @@ select.input option { background: var(--surface2); }
 <body>
 
 <!-- ════════════════════════════════════════════════════════════════
-     VIEW: AUTH
-════════════════════════════════════════════════════════════════ -->
-<div class="view active" id="view-auth">
-  <div class="auth-card">
-    <div class="auth-logo">Reader <span>·</span></div>
-    <div class="auth-tagline">Leia. Anote. Absorva.</div>
-
-    <div class="auth-tabs">
-      <button class="auth-tab active" id="tab-login"  onclick="switchAuthTab('login')">Entrar</button>
-      <button class="auth-tab"        id="tab-signup" onclick="switchAuthTab('signup')">Criar conta</button>
-    </div>
-
-    <div class="auth-error" id="auth-error"></div>
-    <div class="auth-info"  id="auth-info"></div>
-
-    <div class="field">
-      <label for="auth-email">E-mail</label>
-      <input class="input" id="auth-email" type="email" placeholder="seu@email.com" autocomplete="email">
-    </div>
-    <div class="field" id="auth-pass-field">
-      <label for="auth-password">Senha</label>
-      <div style="position:relative;">
-        <input class="input" id="auth-password" type="password" placeholder="••••••••"
-               autocomplete="current-password" style="padding-right:42px;">
-        <button type="button" onclick="togglePasswordVisibility()"
-                style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
-                       background:none;border:none;cursor:pointer;color:var(--text-3);
-                       display:inline-flex;align-items:center;padding:2px;transition:color var(--tr);"
-                title="Mostrar/ocultar senha">
-          <span class="mi" id="eye-icon" style="font-size:18px;">visibility</span>
-        </button>
-      </div>
-    </div>
-
-    <button class="btn btn-primary" id="auth-submit" onclick="handleAuth()" style="width:100%;margin-top:4px;">
-      Entrar
-    </button>
-
-    <button id="forgot-link" onclick="switchAuthTab('forgot')"
-            style="background:none;border:none;cursor:pointer;color:var(--text-3);font:inherit;
-                   font-size:12px;margin-top:12px;text-align:center;width:100%;transition:color var(--tr);">
-      Esqueci minha senha
-    </button>
-
-    <div id="auth-newpass-fields" style="display:none;">
-      <div class="field">
-        <label for="auth-newpass">Nova senha</label>
-        <div style="position:relative;">
-          <input class="input" id="auth-newpass" type="password" placeholder="••••••••"
-                 autocomplete="new-password" style="padding-right:42px;">
-          <button type="button" onclick="toggleNewPassVisibility()"
-                  style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
-                         background:none;border:none;cursor:pointer;color:var(--text-3);
-                         display:inline-flex;align-items:center;padding:2px;">
-            <span class="mi" id="eye-icon-new" style="font-size:18px;">visibility</span>
-          </button>
-        </div>
-      </div>
-      <div class="field">
-        <label for="auth-newpass2">Confirmar nova senha</label>
-        <input class="input" id="auth-newpass2" type="password" placeholder="••••••••"
-               autocomplete="new-password">
-      </div>
-    </div>
-
-    <div class="auth-divider" id="auth-divider-guest">ou</div>
-
-    <button class="btn btn-ghost" id="auth-guest-btn" onclick="enterGuestMode()" style="width:100%;">
-      Continuar sem login
-    </button>
-  </div>
-</div>
-
-<!-- ════════════════════════════════════════════════════════════════
      VIEW: HOME
 ════════════════════════════════════════════════════════════════ -->
-<div class="view" id="view-home">
+<div class="view active" id="view-home">
 
   <!-- Home topbar -->
   <div id="home-topbar">
@@ -706,11 +580,6 @@ select.input option { background: var(--surface2); }
       <span class="mi">settings</span>
     </button>
 
-    <!-- Sync status indicator (shown only when logged in) -->
-    <div id="sync-status" title="Status da sincronização" style="display:none;">
-      <span class="mi">cloud_done</span>
-    </div>
-
     <!-- Settings panel -->
     <div id="settings-panel">
       <div class="settings-item" onclick="exportData(); closeSettingsPanel()">
@@ -720,15 +589,6 @@ select.input option { background: var(--surface2); }
         <span class="mi" style="font-size:18px">upload</span> Importar dados
         <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
       </label>
-      <div id="settings-auth-section">
-        <div class="settings-sep"></div>
-        <div class="settings-item" id="settings-signin-btn" onclick="showView('view-auth'); closeSettingsPanel()">
-          <span class="mi" style="font-size:18px">login</span> Entrar / criar conta
-        </div>
-        <div class="settings-item danger" id="settings-signout-btn" style="display:none" onclick="signOut(); closeSettingsPanel()">
-          <span class="mi" style="font-size:18px">logout</span> Sair
-        </div>
-      </div>
     </div>
   </div>
 
@@ -1040,26 +900,6 @@ const state = {
    Migration: reads legacy localStorage (reader_v4 / reader_v3) on first
    run and moves data into IndexedDB, then clears the old keys.
    ═══════════════════════════════════════════════════════════════════ */
-/* ═══════════════════════════════════════════════════════════════════
-   SUPABASE CONFIG
-   ═══════════════════════════════════════════════════════════════════ */
-const SUPABASE_URL      = 'https://jwhzhzptsgtwzevbqbku.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_0-wyyFwx7yu5CEsdnYpmlQ_dBr09JWW';
-const APP_URL           = 'https://magodosidiomas.github.io/foreign-language-text-reader/';
-
-const { createClient } = supabase;
-const supa = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: {
-    detectSessionInUrl: false, // we handle the hash manually in init()
-    autoRefreshToken:   true,
-    persistSession:     true,
-  }
-});
-
-/* Whether the user is logged in or using guest mode */
-let isGuest = false;
-let supaUserId = null;
-
 const db = new Dexie('ReaderApp');
 db.version(1).stores({
   settings: 'key',
@@ -1319,355 +1159,14 @@ function importData(event) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   AUTH
-   ═══════════════════════════════════════════════════════════════════ */
-let authMode = 'login';
-
-function switchAuthTab(mode) {
-  authMode = mode;
-  const isForgot = mode === 'forgot';
-  document.getElementById('tab-login').classList.toggle('active',  mode === 'login');
-  document.getElementById('tab-signup').classList.toggle('active', mode === 'signup');
-  document.getElementById('auth-pass-field').style.display = isForgot ? 'none' : '';
-  document.getElementById('auth-submit').textContent =
-    mode === 'login' ? 'Entrar' : mode === 'signup' ? 'Criar conta' : 'Enviar link de redefinição';
-  document.getElementById('forgot-link').style.display = isForgot ? 'none' : '';
-  clearAuthMessages();
-  if (isForgot) showAuthInfo('Digite seu e-mail e enviaremos um link para redefinir sua senha.');
-}
-
-function clearAuthMessages() {
-  document.getElementById('auth-error').className = 'auth-error';
-  document.getElementById('auth-info').className  = 'auth-info';
-}
-function showAuthError(msg) {
-  const el = document.getElementById('auth-error');
-  el.textContent = msg; el.classList.add('visible');
-}
-function showAuthInfo(msg) {
-  const el = document.getElementById('auth-info');
-  el.textContent = msg; el.classList.add('visible');
-}
-
-function toggleNewPassVisibility() {
-  const input = document.getElementById('auth-newpass');
-  const icon  = document.getElementById('eye-icon-new');
-  const show  = input.type === 'password';
-  input.type   = show ? 'text' : 'password';
-  icon.textContent = show ? 'visibility_off' : 'visibility';
-}
-
-function togglePasswordVisibility() {
-  const input = document.getElementById('auth-password');
-  const icon  = document.getElementById('eye-icon');
-  const show  = input.type === 'password';
-  input.type   = show ? 'text' : 'password';
-  icon.textContent = show ? 'visibility_off' : 'visibility';
-}
-
-async function handleAuth() {
-  const email    = document.getElementById('auth-email').value.trim();
-  const password = document.getElementById('auth-password').value;
-  const btn      = document.getElementById('auth-submit');
-  if (!email) { showAuthError('Preencha o e-mail.'); return; }
-  if (authMode !== 'forgot' && !password) { showAuthError('Preencha a senha.'); return; }
-  btn.disabled = true;
-  clearAuthMessages();
-  try {
-    if (authMode === 'recovery') {
-      const newPass  = document.getElementById('auth-newpass').value;
-      const newPass2 = document.getElementById('auth-newpass2').value;
-      if (newPass.length < 6) { showAuthError('A senha deve ter pelo menos 6 caracteres.'); return; }
-      if (newPass !== newPass2) { showAuthError('As senhas não coincidem.'); return; }
-      const { error } = await supa.auth.updateUser({ password: newPass });
-      if (error) { showAuthError(translateAuthError(error.message)); return; }
-      history.replaceState(null, '', window.location.pathname);
-      showAuthInfo('Senha atualizada! Entrando…');
-      // onAuthStateChange SIGNED_IN will fire and navigate to home
-      return;
-    }
-
-    if (authMode === 'forgot') {
-      const { error } = await supa.auth.resetPasswordForEmail(email, { redirectTo: APP_URL });
-      if (error) showAuthError(translateAuthError(error.message));
-      else showAuthInfo('Link enviado! Verifique seu e-mail.');
-      return;
-    }
-    let result;
-    if (authMode === 'login') {
-      result = await supa.auth.signInWithPassword({ email, password });
-    } else {
-      result = await supa.auth.signUp({ email, password, options: { emailRedirectTo: APP_URL } });
-    }
-    if (result.error) {
-      showAuthError(translateAuthError(result.error.message));
-    } else if (authMode === 'signup' && !result.data?.session) {
-      showAuthInfo('Verifique seu e-mail para confirmar o cadastro.');
-    } else if (result.data?.session) {
-      supaUserId = result.data.session.user.id;
-      isGuest = false;
-      sessionStorage.removeItem('guestMode');
-      await loadFromSupabase();
-      updateAuthUI();
-      showView('view-home');
-      renderHome();
-      checkBackupReminder();
-    }
-  } finally { btn.disabled = false; }
-}
-
-function translateAuthError(msg) {
-  if (!msg || msg === 'Failed to fetch') return 'Erro de conexão. Verifique sua internet.';
-  if (msg.includes('Invalid login'))      return 'E-mail ou senha incorretos.';
-  if (msg.includes('Email not confirmed'))return 'Confirme seu e-mail antes de entrar.';
-  if (msg.includes('already registered')) return 'Este e-mail já está em uso.';
-  if (msg.includes('Password should'))    return 'A senha deve ter pelo menos 6 caracteres.';
-  return msg;
-}
-
-async function enterGuestMode() {
-  isGuest = true;
-  supaUserId = null;
-  sessionStorage.setItem('guestMode', '1');
-  await load();
-  updateAuthUI();
-  showView('view-home');
-  renderHome();
-  checkBackupReminder();
-}
-
-async function signOut() {
-  await supa.auth.signOut();
-  isGuest = false;
-  supaUserId = null;
-  sessionStorage.removeItem('guestMode');
-  // Clear in-memory state
-  Object.assign(state, {
-    activeLangs: [], currentLang: null, currentTextId: null,
-    texts: {}, globalMeanings: {}, wordsSinceExport: 0,
-    textsSinceExport: 0, lastExportAt: 0,
-  });
-  showView('view-auth');
-}
-
-// Enter key shortcuts on auth form
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('auth-email')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('auth-password')?.focus();
-  });
-  document.getElementById('auth-password')?.addEventListener('keydown', e => {
-    if (e.key === 'Enter') handleAuth();
-  });
-});
-
-/* ═══════════════════════════════════════════════════════════════════
-   SUPABASE DATA LAYER  (used only when logged in)
-   All writes are optimistic — UI updates immediately, sync in background.
-   ═══════════════════════════════════════════════════════════════════ */
-async function loadFromSupabase() {
-  setSyncStatus('syncing');
-  try {
-    const [langsRes, textsRes, meansRes, favsRes] = await Promise.all([
-      supa.from('user_languages').select('code,position').order('position'),
-      supa.from('texts').select('id,lang,title,body,created_at').order('created_at', { ascending: false }),
-      supa.from('word_meanings').select('word_key,meanings'),
-      supa.from('text_favorites').select('text_id,favorites'),
-    ]);
-    state.activeLangs = (langsRes.data || []).map(r => r.code);
-    state.currentLang = state.activeLangs[0] || null;
-    state.texts = {};
-    (textsRes.data || []).forEach(r => {
-      state.texts[r.id] = { id: r.id, lang: r.lang, title: r.title, body: r.body,
-        favorites: {}, createdAt: new Date(r.created_at).getTime() };
-    });
-    (favsRes.data || []).forEach(r => {
-      if (state.texts[r.text_id]) state.texts[r.text_id].favorites = r.favorites || {};
-    });
-    state.globalMeanings = {};
-    (meansRes.data || []).forEach(r => { state.globalMeanings[r.word_key] = r.meanings || []; });
-    setSyncStatus('ok');
-  } catch(e) { console.error('loadFromSupabase failed', e); setSyncStatus('error'); }
-}
-
-async function syncText(t) {
-  if (isGuest) return;
-  setSyncStatus('syncing');
-  try {
-    await supa.from('texts').upsert({
-      id: t.id, user_id: supaUserId, lang: t.lang, title: t.title, body: t.body,
-      updated_at: new Date().toISOString(),
-    });
-    await supa.from('text_favorites').upsert({
-      text_id: t.id, user_id: supaUserId, favorites: t.favorites,
-      updated_at: new Date().toISOString(),
-    });
-    setSyncStatus('ok');
-  } catch(e) { console.error('syncText failed', e); setSyncStatus('error'); }
-}
-
-async function syncDeleteText(id) {
-  if (isGuest) return;
-  setSyncStatus('syncing');
-  try { await supa.from('texts').delete().eq('id', id); setSyncStatus('ok'); }
-  catch(e) { console.error('syncDeleteText failed', e); setSyncStatus('error'); }
-}
-
-async function syncMeaning(wordKey) {
-  if (isGuest) return;
-  setSyncStatus('syncing');
-  try {
-    const meanings = state.globalMeanings[wordKey] || [];
-    if (!meanings.length) {
-      await supa.from('word_meanings').delete().eq('user_id', supaUserId).eq('word_key', wordKey);
-    } else {
-      await supa.from('word_meanings').upsert({
-        user_id: supaUserId, word_key: wordKey, meanings,
-        updated_at: new Date().toISOString(),
-      });
-    }
-    setSyncStatus('ok');
-  } catch(e) { console.error('syncMeaning failed', e); setSyncStatus('error'); }
-}
-
-async function syncFavorites(textId) {
-  if (isGuest) return;
-  setSyncStatus('syncing');
-  try {
-    await supa.from('text_favorites').upsert({
-      text_id: textId, user_id: supaUserId,
-      favorites: state.texts[textId]?.favorites || {},
-      updated_at: new Date().toISOString(),
-    });
-    setSyncStatus('ok');
-  } catch(e) { console.error('syncFavorites failed', e); setSyncStatus('error'); }
-}
-
-async function syncLangs() {
-  if (isGuest) return;
-  setSyncStatus('syncing');
-  try {
-    await supa.from('user_languages').delete().eq('user_id', supaUserId);
-    if (state.activeLangs.length) {
-      await supa.from('user_languages').insert(
-        state.activeLangs.map((code, i) => ({ user_id: supaUserId, code, position: i }))
-      );
-    }
-    setSyncStatus('ok');
-  } catch(e) { console.error('syncLangs failed', e); setSyncStatus('error'); }
-}
-
-let syncTimer = null;
-function setSyncStatus(status) {
-  const el = document.getElementById('sync-status');
-  if (!el || isGuest) return;
-  clearTimeout(syncTimer);
-  el.className = 'sync-status';
-  if (status === 'syncing') {
-    el.className += ' syncing';
-    el.querySelector('.mi').textContent = 'sync';
-    el.title = 'Sincronizando…';
-  } else if (status === 'error') {
-    el.className += ' error';
-    el.querySelector('.mi').textContent = 'cloud_off';
-    el.title = 'Erro ao sincronizar';
-    syncTimer = setTimeout(() => setSyncStatus('ok'), 4000);
-  } else {
-    el.querySelector('.mi').textContent = 'cloud_done';
-    el.title = 'Dados sincronizados';
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════════
    INIT
    ═══════════════════════════════════════════════════════════════════ */
 async function init() {
   populateLangSelect();
-
-  // ── Check URL hash for recovery token BEFORE anything else ───────
-  // Supabase sends: /app#access_token=...&type=recovery
-  // We must handle this before getSession(), otherwise the existing
-  // session check will navigate to home and skip the recovery screen.
-  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  if (hashParams.get('type') === 'recovery' && hashParams.get('access_token')) {
-    // Set the session from the hash tokens so updateUser() works later
-    await supa.auth.setSession({
-      access_token:  hashParams.get('access_token'),
-      refresh_token: hashParams.get('refresh_token') || '',
-    });
-    // Clean the hash from the URL without reloading
-    history.replaceState(null, '', window.location.pathname);
-    enterRecoveryMode();
-    return; // do NOT fall through to getSession()
-  }
-
-  // ── Listen for future auth events (sign-in / sign-out) ───────────
-  supa.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && authMode !== 'recovery') {
-      supaUserId = session.user.id;
-      isGuest = false;
-      sessionStorage.removeItem('guestMode');
-      await loadFromSupabase();
-      updateAuthUI();
-      showView('view-home');
-      renderHome();
-      checkBackupReminder();
-    }
-    if (event === 'SIGNED_OUT') {
-      showView('view-auth');
-    }
-  });
-
-  // ── Check for existing session ────────────────────────────────────
-  const { data: { session } } = await supa.auth.getSession();
-  if (session?.user) {
-    supaUserId = session.user.id;
-    isGuest = false;
-    await loadFromSupabase();
-    updateAuthUI();
-    showView('view-home');
-    renderHome();
-    checkBackupReminder();
-    return;
-  }
-
-  // ── Guest mode ────────────────────────────────────────────────────
-  if (sessionStorage.getItem('guestMode') === '1') {
-    isGuest = true;
-    await load();
-    updateAuthUI();
-    showView('view-home');
-    renderHome();
-    checkBackupReminder();
-    return;
-  }
-
-  showView('view-auth');
-}
-
-function enterRecoveryMode() {
-  authMode = 'recovery';
-  showView('view-auth');
-  document.getElementById('auth-tabs').style.display          = 'none';
-  document.getElementById('auth-email').closest('.field').style.display = 'none';
-  document.getElementById('auth-pass-field').style.display    = 'none';
-  document.getElementById('forgot-link').style.display        = 'none';
-  const divider = document.getElementById('auth-divider-guest');
-  const guestBtn = document.getElementById('auth-guest-btn');
-  if (divider)  divider.style.display  = 'none';
-  if (guestBtn) guestBtn.style.display = 'none';
-  document.getElementById('auth-newpass-fields').style.display = '';
-  document.getElementById('auth-submit').textContent = 'Definir nova senha';
-  showAuthInfo('Digite e confirme sua nova senha.');
-}
-
-function updateAuthUI() {
-  const loggedIn = !isGuest && supaUserId;
-  const syncEl = document.getElementById('sync-status');
-  if (syncEl) syncEl.style.display = loggedIn ? 'flex' : 'none';
-  const signInBtn  = document.getElementById('settings-signin-btn');
-  const signOutBtn = document.getElementById('settings-signout-btn');
-  if (signInBtn)  signInBtn.style.display  = isGuest ? '' : 'none';
-  if (signOutBtn) signOutBtn.style.display = loggedIn ? '' : 'none';
+  await load();
+  showView('view-home');
+  renderHome();
+  checkBackupReminder();
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1842,7 +1341,7 @@ function toggleActiveLang(code) {
     state.activeLangs.push(code);
     if (!state.currentLang) state.currentLang = code;
   }
-  save(); syncLangs(); renderHome(); openLangModal(); // re-render grid and dropdown
+  save(); renderHome(); openLangModal(); // re-render grid and dropdown
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -1951,7 +1450,7 @@ function saveText() {
 
   // If language changed, update currentLang to match
   state.currentLang = lang;
-  save(); syncText(savedText); if (!isGuest) syncLangs();
+  save();
   trackChange(); renderHome(); closeTextModal();
 }
 
@@ -1975,7 +1474,7 @@ function confirmDelete() {
   if (state.currentTextId === deletingId) state.currentTextId = null;
   const _deletedId = deletingId;
   deletingId = null;
-  save(); syncDeleteText(_deletedId);
+  save();
   trackChange(); renderHome(); closeDelModal();
 }
 
@@ -2039,8 +1538,6 @@ function applyDetectedLang() {
   if (!state.activeLangs.includes(lang)) state.activeLangs.push(lang);
   state.currentLang = lang;
   save();
-  syncText(state.texts[state.currentTextId]);
-  syncLangs();
   renderHome(); dismissLangToast();
 }
 
@@ -2212,7 +1709,7 @@ function addMeaning() {
   syncWordHighlight(key);
   renderPopoverMeanings(key);
   positionPopover(activeWordEl);
-  save(); syncMeaning(key); syncFavorites(state.currentTextId);
+  save();
   trackWordAnnotation();
   applyReaderMode();
 }
@@ -2223,7 +1720,7 @@ function setFavorite(key, idx) {
   const t = state.texts[state.currentTextId];
   t.favorites[key] = idx;
   renderPopoverMeanings(key);
-  save(); syncFavorites(state.currentTextId);
+  save();
   applyReaderMode();
 }
 
@@ -2252,7 +1749,7 @@ function deleteMeaning(event, key, idx) {
     positionPopover(activeWordEl);
   }
 
-  save(); syncMeaning(key);
+  save();
   trackWordAnnotation();
   applyReaderMode();
 }
